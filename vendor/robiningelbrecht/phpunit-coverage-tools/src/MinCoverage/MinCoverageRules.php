@@ -1,0 +1,82 @@
+<?php
+
+namespace RobinIngelbrecht\PHPUnitCoverageTools\MinCoverage;
+
+use Composer\Autoload\ClassLoader;
+
+class MinCoverageRules
+{
+    /** @deprecated Use MinCoverageRule::TOTAL  */
+    public const TOTAL = 'Total';
+
+    private function __construct(
+        /** @var MinCoverageRule[] */
+        private readonly array $rules,
+    ) {
+    }
+
+    /**
+     * @return MinCoverageRule[]
+     */
+    public function getRules(): array
+    {
+        return $this->rules;
+    }
+
+    public function hasTotalRule(): bool
+    {
+        foreach ($this->rules as $rule) {
+            if ($rule->isTotalRule()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasOtherRulesThanTotalRule(): bool
+    {
+        foreach ($this->rules as $rule) {
+            if (!$rule->isTotalRule()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function fromInt(int $minCoverage, bool $exitOnLowCoverage): self
+    {
+        return new self(
+            [new MinCoverageRule(
+                pattern: MinCoverageRule::TOTAL,
+                minCoverage: $minCoverage,
+                exitOnLowCoverage: $exitOnLowCoverage
+            )],
+        );
+    }
+
+    public static function fromConfigFile(string $filePathToConfigFile): self
+    {
+        /** @var string $reflectionFileName */
+        $reflectionFileName = (new \ReflectionClass(ClassLoader::class))->getFileName();
+        $absolutePathToConfigFile = dirname($reflectionFileName, 3).'/'.$filePathToConfigFile;
+
+        if (!file_exists($absolutePathToConfigFile)) {
+            throw new \RuntimeException(sprintf('Config file %s not found', $absolutePathToConfigFile));
+        }
+
+        $rules = require $absolutePathToConfigFile;
+        foreach ($rules as $minCoverageRule) {
+            if (!$minCoverageRule instanceof MinCoverageRule) {
+                throw new \RuntimeException('Make sure all coverage rules are of instance '.MinCoverageRule::class);
+            }
+        }
+        $patterns = array_map(fn (MinCoverageRule $minCoverageRule) => $minCoverageRule->getPattern(), $rules);
+        if (count(array_unique($patterns)) !== count($patterns)) {
+            throw new \RuntimeException('Make sure all coverage rule patterns are unique');
+        }
+
+        return new self($rules);
+    }
+}

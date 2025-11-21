@@ -1,0 +1,24 @@
+{
+  "$schema": "vendor/infection/infection/resources/schema.json",
+  "source": {
+    "directories": [
+      "src"
+    ],
+    "excludes": [
+      "Testing"
+    ]
+  },
+  "minCoveredMsi": 100,
+  "minMsi": 100,
+  "mutators": {
+    "@default": true,
+    "TrueValue": {
+      "ignoreSourceCodeByRegex": [
+        ".*match\\s*\\(true\\).*",
+      ],
+    },
+  },
+  "logs": {
+    "text": "build/infection.log",
+  }
+}
