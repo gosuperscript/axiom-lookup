@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Tests\Resolvers;
+namespace Superscript\Schema\Lookup\Tests;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Superscript\Schema\Lookup\Resolvers\DelegatingResolver;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver;
-use Superscript\Schema\Lookup\Resolvers\StaticResolver;
-use Superscript\Schema\Lookup\Sources\ExactFilter;
-use Superscript\Schema\Lookup\Sources\LookupSource;
-use Superscript\Schema\Lookup\Sources\StaticSource;
+use Superscript\Schema\Lookup\LookupResolver;
+use Superscript\Schema\Lookup\LookupSource;
+use Superscript\Schema\Lookup\Support\Filters\ValueFilter;
+use Superscript\Schema\Resolvers\DelegatingResolver;
+use Superscript\Schema\Resolvers\StaticResolver;
+use Superscript\Schema\Sources\StaticSource;
 
 #[CoversNothing]
 class LookupResolverPerformanceTest extends TestCase
@@ -55,7 +55,7 @@ class LookupResolverPerformanceTest extends TestCase
         // Perform a count aggregate (should use minimal memory)
         $source = new LookupSource(
             filePath: $this->largeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
         
@@ -88,7 +88,7 @@ class LookupResolverPerformanceTest extends TestCase
         // Perform a sum aggregate (should use minimal memory)
         $source = new LookupSource(
             filePath: $this->veryLargeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'sum',
             aggregateColumn: 'price',
         );
@@ -121,7 +121,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             filePath: $this->largeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'first',
         );
@@ -139,7 +139,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             filePath: $this->largeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
         
@@ -167,7 +167,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             filePath: $this->largeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'min',
             aggregateColumn: 'price',
@@ -194,7 +194,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             filePath: $this->largeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'max',
             aggregateColumn: 'price',
@@ -226,7 +226,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             filePath: $this->largeCsvPath,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'avg',
             aggregateColumn: 'price',
         );
@@ -262,7 +262,7 @@ class LookupResolverPerformanceTest extends TestCase
             
             $source = new LookupSource(
                 filePath: $csvPath,
-                filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+                filters: [new ValueFilter('category', new StaticSource('Electronics'))],
                 aggregate: 'count',
             );
             

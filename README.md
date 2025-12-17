@@ -5,8 +5,8 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 ## Features
 
 - **Memory-Efficient Streaming**: O(1) memory complexity - processes records one-at-a-time
-- **Seven Aggregate Functions**: `first`, `last`, `min`, `max`, `count`, `sum`, `avg`
-- **Explicit Filter API**: `ExactFilter` and `RangeFilter` for clear, self-documenting code
+- **Seven Aggregate Functions**: `first`, `last`, `min`, `max`, `count`, `sum`, `avg`, `all`
+- **Explicit Filter API**: `ValueFilter` and `RangeFilter` for clear, self-documenting code
 - **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
 - **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
 - **Strongly-Typed Value Objects**: Enhanced type safety with immutable aggregates
@@ -22,12 +22,12 @@ composer require gosuperscript/lookup-resolver
 ## Quick Start
 
 ```php
-use Superscript\LookupResolver\{LookupSource, ExactFilter, StaticSource};
+use Superscript\LookupResolver\{LookupSource, ValueFilter, StaticSource};
 
 // Simple lookup
 $lookup = new LookupSource(
     filePath: '/data/products.csv',
-    filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+    filters: [new ValueFilter('category', new StaticSource('Electronics'))],
     columns: 'price'
 );
 ```

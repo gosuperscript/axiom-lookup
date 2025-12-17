@@ -2,28 +2,31 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Resolvers;
+namespace Superscript\Schema\Lookup;
 
 use League\Csv\Reader;
 use RuntimeException;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\AggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\AvgAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\CountAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\CsvRecord;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\FirstAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\LastAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\MaxAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\MinAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\SumAggregateState;
+use Superscript\Schema\Lookup\Support\Aggregates\Aggregate;
+use Superscript\Schema\Lookup\Support\Aggregates\All;
+use Superscript\Schema\Lookup\Support\Aggregates\Avg;
+use Superscript\Schema\Lookup\Support\Aggregates\Count;
+use Superscript\Schema\Lookup\Support\Aggregates\First;
+use Superscript\Schema\Lookup\Support\Aggregates\Last;
+use Superscript\Schema\Lookup\Support\Aggregates\Max;
+use Superscript\Schema\Lookup\Support\Aggregates\Min;
+use Superscript\Schema\Lookup\Support\Aggregates\Sum;
+use Superscript\Schema\Lookup\Support\Filters\Filter;
 use Superscript\Schema\Source;
-use Superscript\Schema\Lookup\Sources\ExactFilter;
-use Superscript\Schema\Lookup\Sources\LookupSource;
-use Superscript\Schema\Lookup\Sources\RangeFilter;
+use Superscript\Schema\Lookup\Support\Filters\ValueFilter;
+use Superscript\Schema\Lookup\Support\Filters\RangeFilter;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 use Superscript\Monads\Result\Err;
+use Superscript\Schema\Resolvers\Resolver;
 use Throwable;
 
+use function Psl\Iter\all;
+use function Psl\Vec\map;
 use function Superscript\Monads\Option\None;
 use function Superscript\Monads\Option\Some;
 use function Superscript\Monads\Result\Ok;
@@ -51,35 +54,6 @@ final readonly class LookupResolver implements Resolver
                 $reader->setHeaderOffset(0);
             }
 
-            // Resolve all filters
-            $resolvedExactFilters = [];
-            $resolvedRangeFilters = [];
-            
-            foreach ($source->filters as $filter) {
-                $result = $this->resolver->resolve($filter->value);
-                
-                if ($result->isErr()) {
-                    return $result;
-                }
-                
-                $option = $result->unwrap();
-                if ($option->isNone()) {
-                    return Ok(None());
-                }
-                
-                $resolvedValue = $option->unwrap();
-                
-                if ($filter instanceof ExactFilter) {
-                    $resolvedExactFilters[$filter->column] = $resolvedValue;
-                } elseif ($filter instanceof RangeFilter) {
-                    $resolvedRangeFilters[] = [
-                        'value' => $resolvedValue,
-                        'minColumn' => $filter->minColumn,
-                        'maxColumn' => $filter->maxColumn,
-                    ];
-                }
-            }
-
             // Stream through records with memory-efficient processing
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
             
@@ -90,7 +64,7 @@ final readonly class LookupResolver implements Resolver
                 /** @var array<string, mixed> $record */
                 $csvRecord = CsvRecord::from($record);
                 
-                if ($this->matchesExactFilters($csvRecord, $resolvedExactFilters) && $this->matchesRangeFilters($csvRecord, $resolvedRangeFilters)) {
+                if ($this->matchesAllFilters($csvRecord, $source->filters)) {
                     // Process record immediately with immutable value object
                     $aggregateState = $aggregateState->process($csvRecord, $source->aggregateColumn);
                     
@@ -103,8 +77,8 @@ final readonly class LookupResolver implements Resolver
 
             // Finalize and extract result from aggregate state
             $result = $aggregateState->finalize($source->columns);
-            
-            if ($result === null) {
+
+            if ($result === null || (is_array($result) && empty($result))) {
                 return Ok(None());
             }
 
@@ -117,69 +91,29 @@ final readonly class LookupResolver implements Resolver
     /**
      * Create appropriate aggregate state value object
      */
-    private function createAggregateState(string $aggregate): AggregateState
+    private function createAggregateState(string $aggregate): Aggregate
     {
         return match ($aggregate) {
-            'first' => FirstAggregateState::initial(),
-            'last' => LastAggregateState::initial(),
-            'count' => CountAggregateState::initial(),
-            'sum' => SumAggregateState::initial(),
-            'avg' => AvgAggregateState::initial(),
-            'min' => MinAggregateState::initial(),
-            'max' => MaxAggregateState::initial(),
+            'first' => First::initial(),
+            'last' => Last::initial(),
+            'count' => Count::initial(),
+            'sum' => Sum::initial(),
+            'avg' => Avg::initial(),
+            'min' => Min::initial(),
+            'max' => Max::initial(),
+            'all' => All::initial(),
             default => throw new RuntimeException("Unknown aggregate: {$aggregate}"),
         };
     }
 
     /**
-     * @param array<string|int, mixed> $filters
+     * @param list<Filter> $filters
      */
-    private function matchesExactFilters(CsvRecord $record, array $filters): bool
+    private function matchesAllFilters(CsvRecord $record, array $filters): bool
     {
-        foreach ($filters as $column => $value) {
-            $recordValue = $record->getString($column);
-            $compareValue = is_scalar($value) ? (string) $value : null;
-            
-            if ($recordValue === null || $compareValue === null || $recordValue !== $compareValue) {
-                return false;
-            }
-        }
-        
-        return true;
-    }
-
-    /**
-     * @param array<array{value: mixed, minColumn: string|int, maxColumn: string|int}> $rangeFilters
-     */
-    private function matchesRangeFilters(CsvRecord $record, array $rangeFilters): bool
-    {
-        foreach ($rangeFilters as $rangeConfig) {
-            $value = $rangeConfig['value'];
-            $minColumn = $rangeConfig['minColumn'];
-            $maxColumn = $rangeConfig['maxColumn'];
-            
-            if (!$record->has($minColumn) || !$record->has($maxColumn)) {
-                return false;
-            }
-            
-            $minValue = $record->get($minColumn);
-            $maxValue = $record->get($maxColumn);
-            
-            // Check if value falls within the range [min, max)
-            // Using min <= value < max for banding scenarios
-            // This prevents overlap at boundaries (e.g., 100k matches 100k-200k, not 0-100k)
-            if (is_numeric($value) && is_numeric($minValue) && is_numeric($maxValue)) {
-                if ($value < $minValue || $value >= $maxValue) {
-                    return false;
-                }
-            } else {
-                // String comparison fallback
-                if ($value < $minValue || $value >= $maxValue) {
-                    return false;
-                }
-            }
-        }
-        
-        return true;
+        //TODO better error handling
+        return all($filters, fn (Filter $filter) => $filter->matches(
+            $record, $this->resolver->resolve($filter->value)->unwrapOr(false)->unwrapOr(false)
+        ));
     }
 }

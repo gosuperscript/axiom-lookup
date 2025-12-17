@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Tests\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Tests\LookupResolver;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\CsvRecord;
+use Superscript\Schema\Lookup\CsvRecord;
 
 #[CoversClass(CsvRecord::class)]
 class CsvRecordTest extends TestCase
