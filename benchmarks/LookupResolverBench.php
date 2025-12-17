@@ -7,7 +7,7 @@ namespace Superscript\Schema\Lookup\Benchmarks;
 use Illuminate\Container\Container;
 use PhpBench\Attributes\{BeforeMethods, Groups, Iterations, Revs, Warmup};
 use Superscript\Schema\Lookup\Resolvers\{DelegatingResolver, LookupResolver, StaticResolver};
-use Superscript\Schema\Lookup\Sources\{ExactFilter, LookupSource, RangeFilter, StaticSource};
+use Superscript\Schema\Lookup\Sources\{ValueFilter, LookupSource, RangeFilter, StaticSource};
 use Superscript\Schema\Lookup\SymbolRegistry;
 
 /**
@@ -81,7 +81,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->smallCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
         );
 
@@ -97,7 +97,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->mediumCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
         );
 
@@ -113,7 +113,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
         );
 
@@ -129,7 +129,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->hugeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
         );
 
@@ -145,7 +145,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'first',
         );
@@ -162,7 +162,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'last',
         );
@@ -179,7 +179,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
 
@@ -195,7 +195,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'sum',
             aggregateColumn: 'price',
         );
@@ -212,7 +212,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'avg',
             aggregateColumn: 'price',
         );
@@ -229,7 +229,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'min',
             aggregateColumn: 'price',
@@ -247,7 +247,7 @@ class LookupResolverBench
     {
         $source = new LookupSource(
             filePath: $this->largeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'max',
             aggregateColumn: 'price',
@@ -282,7 +282,7 @@ class LookupResolverBench
         $source = new LookupSource(
             filePath: $this->largeCsv,
             filters: [
-                new ExactFilter('category', new StaticSource('Electronics')),
+                new ValueFilter('category', new StaticSource('Electronics')),
                 new RangeFilter('price', 'price', new StaticSource('500')),
             ],
             columns: ['name', 'price'],
@@ -301,7 +301,7 @@ class LookupResolverBench
         // This benchmark tests memory efficiency with a huge file
         $source = new LookupSource(
             filePath: $this->hugeCsv,
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
 

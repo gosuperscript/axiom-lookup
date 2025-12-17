@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Support\Aggregates;
 
-final readonly class LastAggregateState implements AggregateState
+use Superscript\Schema\Lookup\CsvRecord;
+
+final readonly class Last implements Aggregate
 {
     private function __construct(
         private ?CsvRecord $record,

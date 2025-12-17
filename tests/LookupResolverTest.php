@@ -2,35 +2,35 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Tests\Resolvers;
+namespace Superscript\Schema\Lookup\Tests;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use Superscript\Schema\Lookup\Resolvers\DelegatingResolver;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver;
-use Superscript\Schema\Lookup\Resolvers\StaticResolver;
-use Superscript\Schema\Lookup\Sources\ExactFilter;
-use Superscript\Schema\Lookup\Sources\LookupSource;
-use Superscript\Schema\Lookup\Sources\RangeFilter;
-use Superscript\Schema\Lookup\Sources\StaticSource;
+use Superscript\Schema\Lookup\LookupResolver;
+use Superscript\Schema\Lookup\LookupSource;
+use Superscript\Schema\Lookup\CsvRecord;
+use Superscript\Schema\Lookup\Support\Aggregates;
+use Superscript\Schema\Lookup\Support\Filters\RangeFilter;
+use Superscript\Schema\Lookup\Support\Filters\ValueFilter;
+use Superscript\Schema\Resolvers\DelegatingResolver;
+use Superscript\Schema\Resolvers\StaticResolver;
+use Superscript\Schema\Sources\StaticSource;
 
 #[CoversClass(LookupResolver::class)]
 #[CoversClass(LookupSource::class)]
-#[CoversClass(ExactFilter::class)]
+#[CoversClass(ValueFilter::class)]
 #[CoversClass(RangeFilter::class)]
-#[UsesClass(DelegatingResolver::class)]
-#[UsesClass(StaticResolver::class)]
-#[UsesClass(StaticSource::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\CsvRecord::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\FirstAggregateState::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\LastAggregateState::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\CountAggregateState::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\SumAggregateState::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\AvgAggregateState::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\MinAggregateState::class)]
-#[UsesClass(\Superscript\Schema\Lookup\Resolvers\LookupResolver\MaxAggregateState::class)]
+#[UsesClass(CsvRecord::class)]
+#[UsesClass(Aggregates\First::class)]
+#[UsesClass(Aggregates\Last::class)]
+#[UsesClass(Aggregates\Count::class)]
+#[UsesClass(Aggregates\Sum::class)]
+#[UsesClass(Aggregates\Avg::class)]
+#[UsesClass(Aggregates\Min::class)]
+#[UsesClass(Aggregates\Max::class)]
+#[UsesClass(Aggregates\All::class)]
 class LookupResolverTest extends TestCase
 {
     private DelegatingResolver $resolver;
@@ -45,7 +45,7 @@ class LookupResolverTest extends TestCase
 
     private function getFixturePath(string $filename): string
     {
-        return __DIR__ . '/Fixtures/Lookup/' . $filename;
+        return __DIR__ . '/Fixtures/' . $filename;
     }
 
     #[Test]
@@ -53,13 +53,12 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Alice'))],
-            columns: 'age',
+            filters: [new ValueFilter('name', new StaticSource('Alice'))],
+            columns: ['age'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('30', $result->unwrap()->unwrap());
     }
@@ -69,8 +68,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Bob'))],
+            filters: [new ValueFilter('name', new StaticSource('Bob'))],
             columns: ['name', 'age', 'city'],
         );
 
@@ -91,8 +89,8 @@ class LookupResolverTest extends TestCase
         $source = new LookupSource(
             filePath: $this->getFixturePath('products.tsv'),
             delimiter: "\t",
-            filters: [new ExactFilter('product', new StaticSource('Laptop'))],
-            columns: 'price',
+            filters: [new ValueFilter('product', new StaticSource('Laptop'))],
+            columns: ['price'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -106,12 +104,11 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
             filters: [
-                new ExactFilter('city', new StaticSource('NYC')),
-                new ExactFilter('age', new StaticSource('30')),
+                new ValueFilter('city', new StaticSource('NYC')),
+                new ValueFilter('age', new StaticSource('30')),
             ],
-            columns: 'name',
+            columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -125,9 +122,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
-            columns: 'name',
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['name'],
             aggregate: 'first',
         );
 
@@ -142,9 +138,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
-            columns: 'name',
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['name'],
             aggregate: 'last',
         );
 
@@ -159,9 +154,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
-            columns: 'salary',
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['salary'],
             aggregate: 'min',
             aggregateColumn: 'salary',
         );
@@ -177,9 +171,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
-            columns: 'salary',
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['salary'],
             aggregate: 'max',
             aggregateColumn: 'salary',
         );
@@ -195,9 +188,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('NonExistent'))],
-            columns: 'age',
+            filters: [new ValueFilter('name', new StaticSource('NonExistent'))],
+            columns: ['age'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -211,8 +203,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Alice'))],
+            filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: [],
         );
 
@@ -231,9 +222,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('no_header.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter(0, new StaticSource('2'))],
-            columns: 1,
+            filters: [new ValueFilter(0, new StaticSource('2'))],
+            columns: [1],
             hasHeader: false,
         );
 
@@ -249,15 +239,13 @@ class LookupResolverTest extends TestCase
         // Using a nested LookupSource as a filter value
         $cityLookup = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Bob'))],
-            columns: 'city',
+            filters: [new ValueFilter('name', new StaticSource('Bob'))],
+            columns: ['city'],
         );
 
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', $cityLookup)],
+            filters: [new ValueFilter('city', $cityLookup)],
             columns: ['name', 'age'],
         );
 
@@ -275,9 +263,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: '/non/existent/file.csv',
-            delimiter: ',',
             filters: [],
-            columns: 'name',
+            columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -291,7 +278,7 @@ class LookupResolverTest extends TestCase
         $source = new LookupSource(
             filePath: $this->getFixturePath('products.tsv'),
             delimiter: "\t",
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['product', 'price'],
             aggregate: 'min',
             aggregateColumn: 'price',
@@ -311,7 +298,7 @@ class LookupResolverTest extends TestCase
         $source = new LookupSource(
             filePath: $this->getFixturePath('products.tsv'),
             delimiter: "\t",
-            filters: [new ExactFilter('category', new StaticSource('Electronics'))],
+            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['product', 'price'],
             aggregate: 'max',
             aggregateColumn: 'price',
@@ -340,9 +327,8 @@ class LookupResolverTest extends TestCase
 
         $source = new LookupSource(
             filePath: $largeCsvPath,
-            delimiter: ',',
-            filters: [new ExactFilter('id', new StaticSource('500'))],
-            columns: 'value',
+            filters: [new ValueFilter('id', new StaticSource('500'))],
+            columns: ['value'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -359,16 +345,14 @@ class LookupResolverTest extends TestCase
     {
         $noneSource = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('NonExistent'))],
-            columns: 'city',
+            filters: [new ValueFilter('name', new StaticSource('NonExistent'))],
+            columns: ['city'],
         );
 
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', $noneSource)],
-            columns: 'name',
+            filters: [new ValueFilter('city', $noneSource)],
+            columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -382,9 +366,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
             filters: [],
-            columns: 'name',
+            columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -399,9 +382,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Alice'))],
-            columns: 'age',
+            filters: [new ValueFilter('name', new StaticSource('Alice'))],
+            columns: ['age'],
             aggregate: 'invalid_aggregate',
         );
 
@@ -415,9 +397,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
-            columns: 'salary',
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['salary'],
             aggregate: 'min',
         );
 
@@ -431,9 +412,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
-            columns: 'salary',
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['salary'],
             aggregate: 'max',
         );
 
@@ -447,8 +427,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'count',
         );
 
@@ -463,8 +442,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'sum',
             aggregateColumn: 'salary',
         );
@@ -480,8 +458,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'avg',
             aggregateColumn: 'salary',
         );
@@ -497,8 +474,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'sum',
         );
 
@@ -512,8 +488,7 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('city', new StaticSource('NYC'))],
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'avg',
         );
 
@@ -527,9 +502,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('premium_bands.csv'),
-            delimiter: ',',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('150000'))],
-            columns: 'premium',
+            columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -543,9 +517,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('premium_bands.csv'),
-            delimiter: ',',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('50000'))],
-            columns: 'premium',
+            columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -559,9 +532,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('premium_bands.csv'),
-            delimiter: ',',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('500000'))],
-            columns: 'premium',
+            columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -575,9 +547,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('premium_bands.csv'),
-            delimiter: ',',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('100000'))],
-            columns: 'premium',
+            columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -595,12 +566,11 @@ class LookupResolverTest extends TestCase
 
         $source = new LookupSource(
             filePath: $csvPath,
-            delimiter: ',',
             filters: [
-                new ExactFilter('region', new StaticSource('North')),
+                new ValueFilter('region', new StaticSource('North')),
                 new RangeFilter('min_value', 'max_value', new StaticSource('150')),
             ],
-            columns: 'rate',
+            columns: ['rate'],
         );
 
         $result = $this->resolver->resolve($source);
@@ -617,9 +587,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Alice'))],
-            columns: 'age',
+            filters: [new ValueFilter('name', new StaticSource('Alice'))],
+            columns: ['age'],
             aggregate: 'unknown_aggregate',
         );
 
@@ -634,9 +603,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('NonExistentPerson'))],
-            columns: 'age',
+            filters: [new ValueFilter('name', new StaticSource('NonExistentPerson'))],
+            columns: ['age'],
             aggregate: 'avg',
             aggregateColumn: 'age',
         );
@@ -652,9 +620,8 @@ class LookupResolverTest extends TestCase
     {
         $source = new LookupSource(
             filePath: $this->getFixturePath('users.csv'),
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('NonExistentPerson'))],
-            columns: 'age',
+            filters: [new ValueFilter('name', new StaticSource('NonExistentPerson'))],
+            columns: ['age'],
             aggregate: 'sum',
             aggregateColumn: 'age',
         );
@@ -686,9 +653,8 @@ class LookupResolverTest extends TestCase
 
         $source = new LookupSource(
             filePath: $tempFile,
-            delimiter: ',',
-            filters: [new ExactFilter('name', new StaticSource('Item1'))],
-            columns: 'value',
+            filters: [new ValueFilter('name', new StaticSource('Item1'))],
+            columns: ['value'],
             aggregate: 'sum',
             aggregateColumn: 'value',
         );
@@ -700,6 +666,49 @@ class LookupResolverTest extends TestCase
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isSome());
         $this->assertEquals(0, $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function it_can_retrieve_all_results_using_in_operator(): void
+    {
+        $source = new LookupSource(
+            filePath: $this->getFixturePath('users.csv'),
+            filters: [new ValueFilter(
+                value: new StaticSource(['Bob', 'Charlie', 'Eve']),
+                column: 'name',
+                operator: 'in'
+            )],
+            columns: ['salary'],
+            aggregate: 'all',
+        );
+
+        $result = $this->resolver->resolve($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertEquals([
+            '65000',
+            '85000',
+            '80000',
+        ], $result->unwrap()->unwrap()); // 75000 + 85000
+    }
+
+    #[Test]
+    public function it_returns_none_when_no_results_are_found_for_all_aggregate(): void
+    {
+        $source = new LookupSource(
+            filePath: $this->getFixturePath('users.csv'),
+            filters: [new ValueFilter(
+                value: new StaticSource('Peter'),
+                column: 'name',
+            )],
+            columns: ['salary'],
+            aggregate: 'all',
+        );
+
+        $result = $this->resolver->resolve($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
     }
 }
 

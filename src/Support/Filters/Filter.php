@@ -1,0 +1,15 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Superscript\Schema\Lookup\Support\Filters;
+
+use Superscript\Schema\Lookup\CsvRecord;
+use Superscript\Schema\Source;
+
+interface Filter
+{
+    public Source $value {get;}
+
+    public function matches(CsvRecord $record, mixed $value): bool;
+}

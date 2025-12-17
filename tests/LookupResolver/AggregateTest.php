@@ -2,35 +2,35 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Tests\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Tests\LookupResolver;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\AvgAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\CountAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\CsvRecord;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\FirstAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\LastAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\MaxAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\MinAggregateState;
-use Superscript\Schema\Lookup\Resolvers\LookupResolver\SumAggregateState;
+use Superscript\Schema\Lookup\CsvRecord;
+use Superscript\Schema\Lookup\Support\Aggregates\Avg;
+use Superscript\Schema\Lookup\Support\Aggregates\Count;
+use Superscript\Schema\Lookup\Support\Aggregates\First;
+use Superscript\Schema\Lookup\Support\Aggregates\Last;
+use Superscript\Schema\Lookup\Support\Aggregates\Max;
+use Superscript\Schema\Lookup\Support\Aggregates\Min;
+use Superscript\Schema\Lookup\Support\Aggregates\Sum;
 
-#[CoversClass(FirstAggregateState::class)]
-#[CoversClass(LastAggregateState::class)]
-#[CoversClass(CountAggregateState::class)]
-#[CoversClass(SumAggregateState::class)]
-#[CoversClass(AvgAggregateState::class)]
-#[CoversClass(MinAggregateState::class)]
-#[CoversClass(MaxAggregateState::class)]
+#[CoversClass(First::class)]
+#[CoversClass(Last::class)]
+#[CoversClass(Count::class)]
+#[CoversClass(Sum::class)]
+#[CoversClass(Avg::class)]
+#[CoversClass(Min::class)]
+#[CoversClass(Max::class)]
 #[UsesClass(CsvRecord::class)]
-class AggregateStateTest extends TestCase
+class AggregateTest extends TestCase
 {
     #[Test]
     public function first_aggregate_stores_first_record(): void
     {
-        $state = FirstAggregateState::initial();
+        $state = First::initial();
         $record1 = CsvRecord::from(['name' => 'Alice']);
         $record2 = CsvRecord::from(['name' => 'Bob']);
         
@@ -44,7 +44,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function first_aggregate_can_early_exit(): void
     {
-        $state = FirstAggregateState::initial();
+        $state = First::initial();
         $record = CsvRecord::from(['name' => 'Alice']);
         
         self::assertFalse($state->canEarlyExit());
@@ -57,7 +57,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function last_aggregate_stores_last_record(): void
     {
-        $state = LastAggregateState::initial();
+        $state = Last::initial();
         $record1 = CsvRecord::from(['name' => 'Alice']);
         $record2 = CsvRecord::from(['name' => 'Bob']);
         
@@ -71,7 +71,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function last_aggregate_cannot_early_exit(): void
     {
-        $state = LastAggregateState::initial();
+        $state = Last::initial();
         $record = CsvRecord::from(['name' => 'Alice']);
         
         $state = $state->process($record, null);
@@ -82,7 +82,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function count_aggregate_counts_records(): void
     {
-        $state = CountAggregateState::initial();
+        $state = Count::initial();
         $record = CsvRecord::from(['name' => 'Alice']);
         
         $state = $state->process($record, null);
@@ -95,7 +95,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function count_aggregate_ignores_column(): void
     {
-        $state = CountAggregateState::initial();
+        $state = Count::initial();
         $record = CsvRecord::from(['name' => 'Alice', 'age' => 25]);
         
         // Column is ignored for count
@@ -107,7 +107,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function sum_aggregate_sums_numeric_values(): void
     {
-        $state = SumAggregateState::initial();
+        $state = Sum::initial();
         $record1 = CsvRecord::from(['price' => '10.5']);
         $record2 = CsvRecord::from(['price' => '20.25']);
         $record3 = CsvRecord::from(['price' => '5']);
@@ -122,7 +122,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function sum_aggregate_ignores_non_numeric(): void
     {
-        $state = SumAggregateState::initial();
+        $state = Sum::initial();
         $record1 = CsvRecord::from(['price' => '10']);
         $record2 = CsvRecord::from(['price' => 'invalid']);
         $record3 = CsvRecord::from(['price' => '5']);
@@ -137,7 +137,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function sum_aggregate_returns_null_when_no_values(): void
     {
-        $state = SumAggregateState::initial();
+        $state = Sum::initial();
         
         self::assertNull($state->finalize([]));
     }
@@ -145,7 +145,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function avg_aggregate_calculates_average(): void
     {
-        $state = AvgAggregateState::initial();
+        $state = Avg::initial();
         $record1 = CsvRecord::from(['score' => '10']);
         $record2 = CsvRecord::from(['score' => '20']);
         $record3 = CsvRecord::from(['score' => '30']);
@@ -160,7 +160,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function avg_aggregate_ignores_non_numeric(): void
     {
-        $state = AvgAggregateState::initial();
+        $state = Avg::initial();
         $record1 = CsvRecord::from(['score' => '10']);
         $record2 = CsvRecord::from(['score' => 'invalid']);
         $record3 = CsvRecord::from(['score' => '30']);
@@ -175,7 +175,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function avg_aggregate_returns_null_when_no_values(): void
     {
-        $state = AvgAggregateState::initial();
+        $state = Avg::initial();
         
         self::assertNull($state->finalize([]));
     }
@@ -183,7 +183,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function min_aggregate_finds_minimum(): void
     {
-        $state = MinAggregateState::initial();
+        $state = Min::initial();
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
         $record3 = CsvRecord::from(['price' => '30', 'name' => 'Charlie']);
@@ -199,7 +199,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function min_aggregate_ignores_non_numeric(): void
     {
-        $state = MinAggregateState::initial();
+        $state = Min::initial();
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
         
@@ -213,7 +213,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function min_aggregate_returns_null_when_no_records(): void
     {
-        $state = MinAggregateState::initial();
+        $state = Min::initial();
         
         self::assertNull($state->finalize('price'));
     }
@@ -221,7 +221,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function max_aggregate_finds_maximum(): void
     {
-        $state = MaxAggregateState::initial();
+        $state = Max::initial();
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
         $record3 = CsvRecord::from(['price' => '30', 'name' => 'Charlie']);
@@ -237,7 +237,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function max_aggregate_ignores_non_numeric(): void
     {
-        $state = MaxAggregateState::initial();
+        $state = Max::initial();
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '30', 'name' => 'Bob']);
         
@@ -251,7 +251,7 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function max_aggregate_returns_null_when_no_records(): void
     {
-        $state = MaxAggregateState::initial();
+        $state = Max::initial();
         
         self::assertNull($state->finalize('price'));
     }
@@ -259,11 +259,11 @@ class AggregateStateTest extends TestCase
     #[Test]
     public function aggregate_states_cannot_early_exit_by_default(): void
     {
-        self::assertFalse(LastAggregateState::initial()->canEarlyExit());
-        self::assertFalse(CountAggregateState::initial()->canEarlyExit());
-        self::assertFalse(SumAggregateState::initial()->canEarlyExit());
-        self::assertFalse(AvgAggregateState::initial()->canEarlyExit());
-        self::assertFalse(MinAggregateState::initial()->canEarlyExit());
-        self::assertFalse(MaxAggregateState::initial()->canEarlyExit());
+        self::assertFalse(Last::initial()->canEarlyExit());
+        self::assertFalse(Count::initial()->canEarlyExit());
+        self::assertFalse(Sum::initial()->canEarlyExit());
+        self::assertFalse(Avg::initial()->canEarlyExit());
+        self::assertFalse(Min::initial()->canEarlyExit());
+        self::assertFalse(Max::initial()->canEarlyExit());
     }
 }

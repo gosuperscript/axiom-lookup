@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Support\Aggregates;
 
 use RuntimeException;
+use Superscript\Schema\Lookup\CsvRecord;
 
-final readonly class AvgAggregateState implements AggregateState
+final readonly class Avg implements Aggregate
 {
     private function __construct(
         private float $sum,

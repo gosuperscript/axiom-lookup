@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Support\Aggregates;
 
 use RuntimeException;
+use Superscript\Schema\Lookup\CsvRecord;
 
-final readonly class MinAggregateState implements AggregateState
+final readonly class Min implements Aggregate
 {
     /**
      * @param mixed $minValue

@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Support\Aggregates;
+
+use Superscript\Schema\Lookup\CsvRecord;
 
 /**
  * Base interface for aggregate state value objects
  */
-interface AggregateState
+interface Aggregate
 {
     /**
      * Process a matching record

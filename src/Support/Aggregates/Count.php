@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Resolvers\LookupResolver;
+namespace Superscript\Schema\Lookup\Support\Aggregates;
 
-final readonly class CountAggregateState implements AggregateState
+use Superscript\Schema\Lookup\CsvRecord;
+
+final readonly class Count implements Aggregate
 {
     private function __construct(
         private int $count,
