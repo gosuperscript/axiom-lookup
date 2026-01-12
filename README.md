@@ -68,7 +68,7 @@ composer bench:memory       # Test memory efficiency
 
 ## License
 
-Proprietary
+MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Credits
 
