@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Benchmarks;
+namespace Superscript\Axiom\Lookup\Benchmarks;
 
 use Illuminate\Container\Container;
 use PhpBench\Attributes\{BeforeMethods, Groups, Iterations, Revs, Warmup};
-use Superscript\Schema\Lookup\Resolvers\{DelegatingResolver, LookupResolver, StaticResolver};
-use Superscript\Schema\Lookup\Sources\{ValueFilter, LookupSource, RangeFilter, StaticSource};
-use Superscript\Schema\Lookup\SymbolRegistry;
+use Superscript\Axiom\Lookup\Resolvers\{DelegatingResolver, LookupResolver, StaticResolver};
+use Superscript\Axiom\Lookup\Sources\{ValueFilter, LookupSource, RangeFilter, StaticSource};
+use Superscript\Axiom\Lookup\SymbolRegistry;
 
 /**
  * Benchmarks for CSV/TSV lookup resolver performance characteristics.

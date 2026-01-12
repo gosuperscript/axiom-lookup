@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup;
+namespace Superscript\Axiom\Lookup;
 
-use Superscript\Schema\Lookup\Support\Filters\Filter;
+use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Schema\Source;
 
 final readonly class LookupSource implements Source
