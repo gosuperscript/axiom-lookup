@@ -1,5 +1,5 @@
 {
-    "name": "gosuperscript/schema-lookup",
+    "name": "gosuperscript/axiom-lookup",
     "description": "A PHP library for querying CSV/TSV files with streaming, dynamic filtering, aggregate functions, and range-based banding.",
     "type": "library",
     "license": "MIT",
@@ -28,12 +28,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Superscript\\Schema\\Lookup\\": "src/"
+            "Superscript\\Axiom\\Lookup\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Superscript\\Schema\\Lookup\\Tests\\": "tests/"
+            "Superscript\\Axiom\\Lookup\\Tests\\": "tests/"
         }
     },
     "scripts": {
