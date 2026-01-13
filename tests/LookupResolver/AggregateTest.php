@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Tests\LookupResolver;
+namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use Superscript\Schema\Lookup\CsvRecord;
-use Superscript\Schema\Lookup\Support\Aggregates\Avg;
-use Superscript\Schema\Lookup\Support\Aggregates\Count;
-use Superscript\Schema\Lookup\Support\Aggregates\First;
-use Superscript\Schema\Lookup\Support\Aggregates\Last;
-use Superscript\Schema\Lookup\Support\Aggregates\Max;
-use Superscript\Schema\Lookup\Support\Aggregates\Min;
-use Superscript\Schema\Lookup\Support\Aggregates\Sum;
+use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
+use Superscript\Axiom\Lookup\Support\Aggregates\Count;
+use Superscript\Axiom\Lookup\Support\Aggregates\First;
+use Superscript\Axiom\Lookup\Support\Aggregates\Last;
+use Superscript\Axiom\Lookup\Support\Aggregates\Max;
+use Superscript\Axiom\Lookup\Support\Aggregates\Min;
+use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 
 #[CoversClass(First::class)]
 #[CoversClass(Last::class)]

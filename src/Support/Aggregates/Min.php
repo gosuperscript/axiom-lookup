@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Support\Aggregates;
+namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
 use RuntimeException;
-use Superscript\Schema\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\CsvRecord;
 
 final readonly class Min implements Aggregate
 {

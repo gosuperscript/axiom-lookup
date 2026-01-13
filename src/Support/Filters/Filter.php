@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Support\Filters;
+namespace Superscript\Axiom\Lookup\Support\Filters;
 
-use Superscript\Schema\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Schema\Source;
 
 interface Filter

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup;
+namespace Superscript\Axiom\Lookup;
 
 use function Psl\Iter\first;
 

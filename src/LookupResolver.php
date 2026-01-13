@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup;
+namespace Superscript\Axiom\Lookup;
 
 use League\Csv\Reader;
 use RuntimeException;
-use Superscript\Schema\Lookup\Support\Aggregates\Aggregate;
-use Superscript\Schema\Lookup\Support\Aggregates\All;
-use Superscript\Schema\Lookup\Support\Aggregates\Avg;
-use Superscript\Schema\Lookup\Support\Aggregates\Count;
-use Superscript\Schema\Lookup\Support\Aggregates\First;
-use Superscript\Schema\Lookup\Support\Aggregates\Last;
-use Superscript\Schema\Lookup\Support\Aggregates\Max;
-use Superscript\Schema\Lookup\Support\Aggregates\Min;
-use Superscript\Schema\Lookup\Support\Aggregates\Sum;
-use Superscript\Schema\Lookup\Support\Filters\Filter;
+use Superscript\Axiom\Lookup\Support\Aggregates\Aggregate;
+use Superscript\Axiom\Lookup\Support\Aggregates\All;
+use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
+use Superscript\Axiom\Lookup\Support\Aggregates\Count;
+use Superscript\Axiom\Lookup\Support\Aggregates\First;
+use Superscript\Axiom\Lookup\Support\Aggregates\Last;
+use Superscript\Axiom\Lookup\Support\Aggregates\Max;
+use Superscript\Axiom\Lookup\Support\Aggregates\Min;
+use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
+use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Schema\Source;
-use Superscript\Schema\Lookup\Support\Filters\ValueFilter;
-use Superscript\Schema\Lookup\Support\Filters\RangeFilter;
+use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 use Superscript\Monads\Result\Err;
