@@ -1,4 +1,4 @@
-# Lookup Resolver
+# Axiom Lookup
 
 A high-performance PHP library for querying CSV/TSV files with streaming, dynamic filtering, aggregate functions, and range-based banding.
 
@@ -16,13 +16,13 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 ## Installation
 
 ```bash
-composer require gosuperscript/lookup-resolver
+composer require gosuperscript/schema-lookup
 ```
 
 ## Quick Start
 
 ```php
-use Superscript\LookupResolver\{LookupSource, ValueFilter, StaticSource};
+use Superscript\Schema\Lookup\{LookupSource, ValueFilter, StaticSource};
 
 // Simple lookup
 $lookup = new LookupSource(
