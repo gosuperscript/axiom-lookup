@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Superscript\Schema\Lookup\Tests;
+namespace Superscript\Axiom\Lookup\Tests;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use Superscript\Schema\Lookup\LookupResolver;
-use Superscript\Schema\Lookup\LookupSource;
-use Superscript\Schema\Lookup\CsvRecord;
-use Superscript\Schema\Lookup\Support\Aggregates;
-use Superscript\Schema\Lookup\Support\Filters\RangeFilter;
-use Superscript\Schema\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\LookupResolver;
+use Superscript\Axiom\Lookup\LookupSource;
+use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\Support\Aggregates;
+use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
+use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Schema\Resolvers\DelegatingResolver;
 use Superscript\Schema\Resolvers\StaticResolver;
 use Superscript\Schema\Sources\StaticSource;
