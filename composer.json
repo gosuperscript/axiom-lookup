@@ -15,7 +15,7 @@
     "require": {
         "php": "^8.4",
         "gosuperscript/monads": "^1.0.0",
-        "gosuperscript/schema": "*",
+        "gosuperscript/schema": "^0.1.0",
         "league/csv": "^9.27.0"
     },
     "require-dev": {
