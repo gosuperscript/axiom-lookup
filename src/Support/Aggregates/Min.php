@@ -29,11 +29,11 @@ final readonly class Min implements Aggregate
         }
 
         $value = $record->get($aggregateColumn);
-        
+
         if ($value !== null && ($this->minValue === null || $value < $this->minValue)) {
             return new self($record, $value);
         }
-        
+
         return $this;
     }
 

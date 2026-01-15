@@ -29,11 +29,11 @@ final readonly class Max implements Aggregate
         }
 
         $value = $record->get($aggregateColumn);
-        
+
         if ($value !== null && ($this->maxValue === null || $value > $this->maxValue)) {
             return new self($record, $value);
         }
-        
+
         return $this;
     }
 

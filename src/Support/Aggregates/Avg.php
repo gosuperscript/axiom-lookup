@@ -29,7 +29,7 @@ final readonly class Avg implements Aggregate
         if ($value !== null) {
             return new self($this->sum + $value, $this->count + 1);
         }
-        
+
         return $this;
     }
 
@@ -38,7 +38,7 @@ final readonly class Avg implements Aggregate
         if ($this->count === 0) {
             return null;
         }
-        
+
         return $this->sum / $this->count;
     }
 

@@ -33,10 +33,10 @@ class AggregateTest extends TestCase
         $state = First::initial();
         $record1 = CsvRecord::from(['name' => 'Alice']);
         $record2 = CsvRecord::from(['name' => 'Bob']);
-        
+
         $state = $state->process($record1, null);
         $state = $state->process($record2, null);
-        
+
         $result = $state->finalize('name');
         self::assertSame('Alice', $result);
     }
@@ -46,11 +46,11 @@ class AggregateTest extends TestCase
     {
         $state = First::initial();
         $record = CsvRecord::from(['name' => 'Alice']);
-        
+
         self::assertFalse($state->canEarlyExit());
-        
+
         $state = $state->process($record, null);
-        
+
         self::assertTrue($state->canEarlyExit());
     }
 
@@ -60,10 +60,10 @@ class AggregateTest extends TestCase
         $state = Last::initial();
         $record1 = CsvRecord::from(['name' => 'Alice']);
         $record2 = CsvRecord::from(['name' => 'Bob']);
-        
+
         $state = $state->process($record1, null);
         $state = $state->process($record2, null);
-        
+
         $result = $state->finalize('name');
         self::assertSame('Bob', $result);
     }
@@ -73,9 +73,9 @@ class AggregateTest extends TestCase
     {
         $state = Last::initial();
         $record = CsvRecord::from(['name' => 'Alice']);
-        
+
         $state = $state->process($record, null);
-        
+
         self::assertFalse($state->canEarlyExit());
     }
 
@@ -84,11 +84,11 @@ class AggregateTest extends TestCase
     {
         $state = Count::initial();
         $record = CsvRecord::from(['name' => 'Alice']);
-        
+
         $state = $state->process($record, null);
         $state = $state->process($record, null);
         $state = $state->process($record, null);
-        
+
         self::assertSame(3, $state->finalize([]));
     }
 
@@ -97,10 +97,10 @@ class AggregateTest extends TestCase
     {
         $state = Count::initial();
         $record = CsvRecord::from(['name' => 'Alice', 'age' => 25]);
-        
+
         // Column is ignored for count
         $state = $state->process($record, 'age');
-        
+
         self::assertSame(1, $state->finalize([]));
     }
 
@@ -111,11 +111,11 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['price' => '10.5']);
         $record2 = CsvRecord::from(['price' => '20.25']);
         $record3 = CsvRecord::from(['price' => '5']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
         $state = $state->process($record3, 'price');
-        
+
         self::assertSame(35.75, $state->finalize([]));
     }
 
@@ -126,11 +126,11 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['price' => '10']);
         $record2 = CsvRecord::from(['price' => 'invalid']);
         $record3 = CsvRecord::from(['price' => '5']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
         $state = $state->process($record3, 'price');
-        
+
         self::assertSame(15.0, $state->finalize([]));
     }
 
@@ -138,7 +138,7 @@ class AggregateTest extends TestCase
     public function sum_aggregate_returns_null_when_no_values(): void
     {
         $state = Sum::initial();
-        
+
         self::assertNull($state->finalize([]));
     }
 
@@ -149,11 +149,11 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['score' => '10']);
         $record2 = CsvRecord::from(['score' => '20']);
         $record3 = CsvRecord::from(['score' => '30']);
-        
+
         $state = $state->process($record1, 'score');
         $state = $state->process($record2, 'score');
         $state = $state->process($record3, 'score');
-        
+
         self::assertSame(20.0, $state->finalize([]));
     }
 
@@ -164,11 +164,11 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['score' => '10']);
         $record2 = CsvRecord::from(['score' => 'invalid']);
         $record3 = CsvRecord::from(['score' => '30']);
-        
+
         $state = $state->process($record1, 'score');
         $state = $state->process($record2, 'score');
         $state = $state->process($record3, 'score');
-        
+
         self::assertSame(20.0, $state->finalize([]));
     }
 
@@ -176,7 +176,7 @@ class AggregateTest extends TestCase
     public function avg_aggregate_returns_null_when_no_values(): void
     {
         $state = Avg::initial();
-        
+
         self::assertNull($state->finalize([]));
     }
 
@@ -187,11 +187,11 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
         $record3 = CsvRecord::from(['price' => '30', 'name' => 'Charlie']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
         $state = $state->process($record3, 'price');
-        
+
         $result = $state->finalize(['price', 'name']);
         self::assertSame(['price' => '10', 'name' => 'Bob'], $result);
     }
@@ -202,10 +202,10 @@ class AggregateTest extends TestCase
         $state = Min::initial();
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
-        
+
         $result = $state->finalize(['price', 'name']);
         self::assertSame(['price' => '10', 'name' => 'Bob'], $result);
     }
@@ -214,7 +214,7 @@ class AggregateTest extends TestCase
     public function min_aggregate_returns_null_when_no_records(): void
     {
         $state = Min::initial();
-        
+
         self::assertNull($state->finalize('price'));
     }
 
@@ -225,11 +225,11 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
         $record3 = CsvRecord::from(['price' => '30', 'name' => 'Charlie']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
         $state = $state->process($record3, 'price');
-        
+
         $result = $state->finalize(['price', 'name']);
         self::assertSame(['price' => '30', 'name' => 'Charlie'], $result);
     }
@@ -240,10 +240,10 @@ class AggregateTest extends TestCase
         $state = Max::initial();
         $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '30', 'name' => 'Bob']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
-        
+
         $result = $state->finalize(['price', 'name']);
         self::assertSame(['price' => '30', 'name' => 'Bob'], $result);
     }
@@ -252,7 +252,7 @@ class AggregateTest extends TestCase
     public function max_aggregate_returns_null_when_no_records(): void
     {
         $state = Max::initial();
-        
+
         self::assertNull($state->finalize('price'));
     }
 

@@ -49,25 +49,25 @@ final readonly class LookupResolver implements Resolver
             // Read and parse the CSV/TSV file
             $reader = Reader::from($source->filePath);
             $reader->setDelimiter($source->delimiter);
-            
+
             if ($source->hasHeader) {
                 $reader->setHeaderOffset(0);
             }
 
             // Stream through records with memory-efficient processing
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
-            
+
             // Initialize aggregate-specific state using value objects
             $aggregateState = $this->createAggregateState($source->aggregate);
-            
+
             foreach ($records as $record) {
                 /** @var array<string, mixed> $record */
                 $csvRecord = CsvRecord::from($record);
-                
-                if ($this->matchesAllFilters($csvRecord, $source->filters)) {
+
+                if ($this->matchesAllFilters($csvRecord, array_values($source->filters))) {
                     // Process record immediately with immutable value object
                     $aggregateState = $aggregateState->process($csvRecord, $source->aggregateColumn);
-                    
+
                     // Early exit optimization for 'first' aggregate
                     if ($aggregateState->canEarlyExit()) {
                         break;
@@ -113,7 +113,10 @@ final readonly class LookupResolver implements Resolver
     {
         //TODO better error handling
         return all($filters, fn (Filter $filter) => $filter->matches(
-            $record, $this->resolver->resolve($filter->value)->unwrapOr(false)->unwrapOr(false)
+            $record,
+            $this->resolver->resolve($filter->value)
+                ->unwrapOr(Some(false))
+                ->unwrapOr(false)
         ));
     }
 }
