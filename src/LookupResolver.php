@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
+use Illuminate\Support\Facades\Storage;
 use League\Csv\Reader;
 use RuntimeException;
 use Superscript\Axiom\Lookup\Support\Aggregates\Aggregate;
@@ -25,8 +26,6 @@ use Superscript\Monads\Result\Err;
 use Superscript\Axiom\Resolvers\Resolver;
 use Throwable;
 
-use function Psl\Iter\all;
-use function Psl\Vec\map;
 use function Superscript\Monads\Option\None;
 use function Superscript\Monads\Option\Some;
 use function Superscript\Monads\Result\Ok;
@@ -47,31 +46,39 @@ final readonly class LookupResolver implements Resolver
     {
         try {
             // Read and parse the CSV/TSV file
-            $reader = Reader::from($source->filePath);
+            $filePath = $this->resolveFilePath($source->filePath);
+            $reader = Reader::from($filePath);
             $reader->setDelimiter($source->delimiter);
-            
+
             if ($source->hasHeader) {
                 $reader->setHeaderOffset(0);
             }
 
             // Stream through records with memory-efficient processing
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
-            
+
             // Initialize aggregate-specific state using value objects
             $aggregateState = $this->createAggregateState($source->aggregate);
-            
+
             foreach ($records as $record) {
                 /** @var array<string, mixed> $record */
                 $csvRecord = CsvRecord::from($record);
-                
-                if ($this->matchesAllFilters($csvRecord, $source->filters)) {
-                    // Process record immediately with immutable value object
-                    $aggregateState = $aggregateState->process($csvRecord, $source->aggregateColumn);
-                    
-                    // Early exit optimization for 'first' aggregate
-                    if ($aggregateState->canEarlyExit()) {
-                        break;
-                    }
+                $filterResult = $this->matchesAllFilters($csvRecord, $source->filters);
+
+                if ($filterResult->isErr()) {
+                    return $filterResult;
+                }
+
+                if ($filterResult->unwrap() === false) {
+                    continue;
+                }
+
+                // Process record immediately with immutable value object
+                $aggregateState = $aggregateState->process($csvRecord, $source->aggregateColumn);
+
+                // Early exit optimization for 'first' aggregate
+                if ($aggregateState->canEarlyExit()) {
+                    break;
                 }
             }
 
@@ -109,12 +116,40 @@ final readonly class LookupResolver implements Resolver
     /**
      * @param array<Filter> $filters
      */
-    private function matchesAllFilters(CsvRecord $record, array $filters): bool
+    private function matchesAllFilters(CsvRecord $record, array $filters): Result
     {
-        //TODO better error handling
-        return all($filters, fn (Filter $filter) => $filter->matches(
-            $record,
-            $this->resolver->resolve($filter->value)->unwrapOr(None())->unwrapOr(false)
-        ));
+        foreach ($filters as $filter) {
+            $resolveResult = $this->resolveValue($filter->value);
+
+            if ($resolveResult->isErr() || !$filter->matches($record, $resolveResult->unwrap())) {
+                return $resolveResult->isErr() ? $resolveResult : Ok(false);
+            }
+        }
+
+        return Ok(true);
+    }
+
+    private function resolveValue(mixed $value): Result
+    {
+        while ($value instanceof Source) {
+            $result = $this->resolver->resolve($value);
+
+            if ($result->isErr()) {
+                return $result;
+            }
+
+            $value = $result->unwrap()->unwrapOr(null);
+        }
+
+        return Ok($value);
+    }
+
+    private function resolveFilePath(string $path): string
+    {
+        try {
+            return Storage::path($path);
+        } catch (RuntimeException) {
+            return $path;
+        }
     }
 }
