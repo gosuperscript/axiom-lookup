@@ -23,8 +23,8 @@
       ],
     },
     "Break_": {
-      "ignoreSourceCodeByRegex": [
-        ".*canEarlyExit.*",
+      "ignore": [
+        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
       ],
     },
     "FalseValue": {
