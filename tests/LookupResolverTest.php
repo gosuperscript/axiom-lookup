@@ -710,5 +710,47 @@ class LookupResolverTest extends TestCase
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
     }
+
+    #[Test]
+    public function range_filter_returns_false_when_min_column_missing(): void
+    {
+        $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
+        $record = CsvRecord::from(['max_price' => '200', 'name' => 'Product']); // min_price is missing
+        
+        $result = $filter->matches($record, '100');
+        
+        $this->assertFalse($result);
+    }
+
+    #[Test]
+    public function range_filter_returns_false_when_max_column_missing(): void
+    {
+        $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
+        $record = CsvRecord::from(['min_price' => '50', 'name' => 'Product']); // max_price is missing
+        
+        $result = $filter->matches($record, '100');
+        
+        $this->assertFalse($result);
+    }
+
+    #[Test]
+    public function first_aggregate_stops_processing_after_first_match(): void
+    {
+        // Create a fixture with multiple matching records
+        $fixturePath = $this->getFixturePath('users.csv');
+        
+        $source = new LookupSource(
+            filePath: $fixturePath,
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: 'name',
+            aggregate: 'first',
+        );
+
+        $result = $this->resolver->resolve($source);
+        
+        // Should return Alice (first match), not Charlie (second match from NYC)
+        $this->assertTrue($result->isOk());
+        $this->assertEquals('Alice', $result->unwrap()->unwrap());
+    }
 }
 

@@ -55,6 +55,14 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
+    public function first_aggregate_returns_null_when_no_records(): void
+    {
+        $state = First::initial();
+        
+        self::assertNull($state->finalize('name'));
+    }
+
+    #[Test]
     public function last_aggregate_stores_last_record(): void
     {
         $state = Last::initial();
@@ -80,6 +88,14 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
+    public function last_aggregate_returns_null_when_no_records(): void
+    {
+        $state = Last::initial();
+        
+        self::assertNull($state->finalize('name'));
+    }
+
+    #[Test]
     public function count_aggregate_counts_records(): void
     {
         $state = Count::initial();
@@ -102,6 +118,14 @@ class AggregateTest extends TestCase
         $state = $state->process($record, 'age');
         
         self::assertSame(1, $state->finalize([]));
+    }
+
+    #[Test]
+    public function count_aggregate_returns_null_when_no_records(): void
+    {
+        $state = Count::initial();
+        
+        self::assertNull($state->finalize([]));
     }
 
     #[Test]
@@ -219,6 +243,21 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
+    public function min_aggregate_uses_first_occurrence_for_duplicate_min_values(): void
+    {
+        $state = Min::initial();
+        $record1 = CsvRecord::from(['price' => '10', 'name' => 'Alice']);
+        $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
+        
+        $state = $state->process($record1, 'price');
+        $state = $state->process($record2, 'price');
+        
+        $result = $state->finalize(['price', 'name']);
+        // Should keep the first occurrence
+        self::assertSame(['price' => '10', 'name' => 'Alice'], $result);
+    }
+
+    #[Test]
     public function max_aggregate_finds_maximum(): void
     {
         $state = Max::initial();
@@ -254,6 +293,21 @@ class AggregateTest extends TestCase
         $state = Max::initial();
         
         self::assertNull($state->finalize('price'));
+    }
+
+    #[Test]
+    public function max_aggregate_uses_first_occurrence_for_duplicate_max_values(): void
+    {
+        $state = Max::initial();
+        $record1 = CsvRecord::from(['price' => '30', 'name' => 'Alice']);
+        $record2 = CsvRecord::from(['price' => '30', 'name' => 'Bob']);
+        
+        $state = $state->process($record1, 'price');
+        $state = $state->process($record2, 'price');
+        
+        $result = $state->finalize(['price', 'name']);
+        // Should keep the first occurrence
+        self::assertSame(['price' => '30', 'name' => 'Alice'], $result);
     }
 
     #[Test]
