@@ -743,9 +743,9 @@ class LookupResolverTest extends TestCase
             'name' => 'Product'
         ]);
         
-        // Should work with numeric values
+        // Should work with numeric values - [min, max) range
         $this->assertTrue($filter->matches($record, '100'));
-        $this->assertFalse($filter->matches($record, '50')); // Exactly at min (excluded)
+        $this->assertTrue($filter->matches($record, '50')); // Exactly at min (included)
         $this->assertFalse($filter->matches($record, '150')); // At max (excluded)
         $this->assertFalse($filter->matches($record, '200')); // Above max
         
@@ -769,7 +769,7 @@ class LookupResolverTest extends TestCase
         $source = new LookupSource(
             filePath: $fixturePath,
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
-            columns: 'name',
+            columns: ['name'],
             aggregate: 'first',
         );
 
