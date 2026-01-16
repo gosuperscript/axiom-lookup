@@ -734,6 +734,33 @@ class LookupResolverTest extends TestCase
     }
 
     #[Test]
+    public function range_filter_handles_non_numeric_values(): void
+    {
+        $filter = new RangeFilter('min_value', 'max_value', new StaticSource('100'));
+        $record = CsvRecord::from([
+            'min_value' => '50',
+            'max_value' => '150',
+            'name' => 'Product'
+        ]);
+        
+        // Should work with numeric values
+        $this->assertTrue($filter->matches($record, '100'));
+        $this->assertFalse($filter->matches($record, '50')); // Exactly at min (excluded)
+        $this->assertFalse($filter->matches($record, '150')); // At max (excluded)
+        $this->assertFalse($filter->matches($record, '200')); // Above max
+        
+        // Test with non-numeric comparisons
+        $record2 = CsvRecord::from([
+            'min_value' => 'abc',
+            'max_value' => 'xyz',
+            'name' => 'Product2'
+        ]);
+        
+        $this->assertTrue($filter->matches($record2, 'def')); // 'def' >= 'abc' && 'def' < 'xyz'
+        $this->assertFalse($filter->matches($record2, 'aaa')); // Below min
+    }
+
+    #[Test]
     public function first_aggregate_stops_processing_after_first_match(): void
     {
         // Create a fixture with multiple matching records
