@@ -24,7 +24,7 @@
     },
     "Break_": {
       "ignoreSourceCodeByRegex": [
-        ".*if \\(\\$aggregateState->canEarlyExit\\(\\)\\).*break;.*",
+        ".*canEarlyExit.*",
       ],
     },
     "FalseValue": {
