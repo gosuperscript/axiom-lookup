@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
-use Illuminate\Support\Facades\Storage;
 use League\Csv\Reader;
 use RuntimeException;
 use Superscript\Axiom\Lookup\Support\Aggregates\Aggregate;
@@ -46,8 +45,7 @@ final readonly class LookupResolver implements Resolver
     {
         try {
             // Read and parse the CSV/TSV file
-            $filePath = $this->resolveFilePath($source->filePath);
-            $reader = Reader::from($filePath);
+            $reader = Reader::from($source->filePath);
             $reader->setDelimiter($source->delimiter);
 
             if ($source->hasHeader) {
@@ -119,37 +117,13 @@ final readonly class LookupResolver implements Resolver
     private function matchesAllFilters(CsvRecord $record, array $filters): Result
     {
         foreach ($filters as $filter) {
-            $resolveResult = $this->resolveValue($filter->value);
+            $resolveResult = $this->resolver->resolve($filter->value);
 
-            if ($resolveResult->isErr() || !$filter->matches($record, $resolveResult->unwrap())) {
+            if ($resolveResult->isErr() || !$filter->matches($record, $resolveResult->unwrap()->unwrapOr(null))) {
                 return $resolveResult->isErr() ? $resolveResult : Ok(false);
             }
         }
 
         return Ok(true);
-    }
-
-    private function resolveValue(mixed $value): Result
-    {
-        while ($value instanceof Source) {
-            $result = $this->resolver->resolve($value);
-
-            if ($result->isErr()) {
-                return $result;
-            }
-
-            $value = $result->unwrap()->unwrapOr(null);
-        }
-
-        return Ok($value);
-    }
-
-    private function resolveFilePath(string $path): string
-    {
-        try {
-            return Storage::path($path);
-        } catch (RuntimeException) {
-            return $path;
-        }
     }
 }
