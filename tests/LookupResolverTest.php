@@ -710,5 +710,74 @@ class LookupResolverTest extends TestCase
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
     }
+
+    #[Test]
+    public function range_filter_returns_false_when_min_column_missing(): void
+    {
+        $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
+        $record = CsvRecord::from(['max_price' => '200', 'name' => 'Product']); // min_price is missing
+        
+        $result = $filter->matches($record, '100');
+        
+        $this->assertFalse($result);
+    }
+
+    #[Test]
+    public function range_filter_returns_false_when_max_column_missing(): void
+    {
+        $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
+        $record = CsvRecord::from(['min_price' => '50', 'name' => 'Product']); // max_price is missing
+        
+        $result = $filter->matches($record, '100');
+        
+        $this->assertFalse($result);
+    }
+
+    #[Test]
+    public function range_filter_handles_non_numeric_values(): void
+    {
+        $filter = new RangeFilter('min_value', 'max_value', new StaticSource('100'));
+        $record = CsvRecord::from([
+            'min_value' => '50',
+            'max_value' => '150',
+            'name' => 'Product'
+        ]);
+        
+        // Should work with numeric values - [min, max) range
+        $this->assertTrue($filter->matches($record, '100'));
+        $this->assertTrue($filter->matches($record, '50')); // Exactly at min (included)
+        $this->assertFalse($filter->matches($record, '150')); // At max (excluded)
+        $this->assertFalse($filter->matches($record, '200')); // Above max
+        
+        // Test with non-numeric comparisons
+        $record2 = CsvRecord::from([
+            'min_value' => 'abc',
+            'max_value' => 'xyz',
+            'name' => 'Product2'
+        ]);
+        
+        $this->assertTrue($filter->matches($record2, 'def')); // 'def' >= 'abc' && 'def' < 'xyz'
+        $this->assertFalse($filter->matches($record2, 'aaa')); // Below min
+    }
+
+    #[Test]
+    public function first_aggregate_stops_processing_after_first_match(): void
+    {
+        // Create a fixture with multiple matching records
+        $fixturePath = $this->getFixturePath('users.csv');
+        
+        $source = new LookupSource(
+            filePath: $fixturePath,
+            filters: [new ValueFilter('city', new StaticSource('NYC'))],
+            columns: ['name'],
+            aggregate: 'first',
+        );
+
+        $result = $this->resolver->resolve($source);
+        
+        // Should return Alice (first match), not Charlie (second match from NYC)
+        $this->assertTrue($result->isOk());
+        $this->assertEquals('Alice', $result->unwrap()->unwrap());
+    }
 }
 

@@ -20,7 +20,11 @@ final readonly class ValueFilter implements Filter
 
     public function matches(CsvRecord $record, mixed $value): bool
     {
-        return $this->getOperatorOverloader()->evaluate($record->get($this->column), $value, $this->operator);
+        return (bool) $this->getOperatorOverloader()->evaluate(
+            $record->get($this->column),
+            $value,
+            $this->operator
+        );
     }
 
     private function getOperatorOverloader(): OperatorOverloader

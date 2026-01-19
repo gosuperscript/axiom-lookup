@@ -107,13 +107,14 @@ final readonly class LookupResolver implements Resolver
     }
 
     /**
-     * @param list<Filter> $filters
+     * @param array<Filter> $filters
      */
     private function matchesAllFilters(CsvRecord $record, array $filters): bool
     {
         //TODO better error handling
         return all($filters, fn (Filter $filter) => $filter->matches(
-            $record, $this->resolver->resolve($filter->value)->unwrapOr(false)->unwrapOr(false)
+            $record,
+            $this->resolver->resolve($filter->value)->unwrapOr(None())->unwrapOr(false)
         ));
     }
 }
