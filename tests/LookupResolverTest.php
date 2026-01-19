@@ -14,9 +14,9 @@ use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Schema\Resolvers\DelegatingResolver;
-use Superscript\Schema\Resolvers\StaticResolver;
-use Superscript\Schema\Sources\StaticSource;
+use Superscript\Axiom\Resolvers\DelegatingResolver;
+use Superscript\Axiom\Resolvers\StaticResolver;
+use Superscript\Axiom\Sources\StaticSource;
 
 #[CoversClass(LookupResolver::class)]
 #[CoversClass(LookupSource::class)]

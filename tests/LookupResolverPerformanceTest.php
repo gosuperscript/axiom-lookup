@@ -10,9 +10,9 @@ use PHPUnit\Framework\TestCase;
 use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Schema\Resolvers\DelegatingResolver;
-use Superscript\Schema\Resolvers\StaticResolver;
-use Superscript\Schema\Sources\StaticSource;
+use Superscript\Axiom\Resolvers\DelegatingResolver;
+use Superscript\Axiom\Resolvers\StaticResolver;
+use Superscript\Axiom\Sources\StaticSource;
 
 #[CoversNothing]
 class LookupResolverPerformanceTest extends TestCase
