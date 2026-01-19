@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
 use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Schema\Source;
+use Superscript\Axiom\Source;
 
 interface Filter
 {

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup;
 
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
-use Superscript\Schema\Source;
+use Superscript\Axiom\Source;
 
 final readonly class LookupSource implements Source
 {

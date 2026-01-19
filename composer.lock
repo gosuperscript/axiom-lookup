@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "83a3b0480283ae0f9ed9c55c019299d0",
+    "content-hash": "9967d5cf23e8a6f0a3b6e35f22410ba8",
     "packages": [
         {
             "name": "azjezz/psl",
@@ -300,6 +300,61 @@
                 }
             ],
             "time": "2025-08-10T19:31:58+00:00"
+        },
+        {
+            "name": "gosuperscript/axiom",
+            "version": "v0.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/gosuperscript/axiom.git",
+                "reference": "8fceee0d30a8286e66863a91ebe9a86da9dccc19"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/gosuperscript/axiom/zipball/8fceee0d30a8286e66863a91ebe9a86da9dccc19",
+                "reference": "8fceee0d30a8286e66863a91ebe9a86da9dccc19",
+                "shasum": ""
+            },
+            "require": {
+                "azjezz/psl": "^3.2 || ^4.0",
+                "brick/math": "^0.12.0 || ^0.13.0",
+                "ext-intl": "*",
+                "gosuperscript/monads": "^1.0.0",
+                "illuminate/container": "^11.0 || ^12.0",
+                "illuminate/support": "^11.0 || ^12.0",
+                "php": "^8.4",
+                "sebastian/exporter": "^6.0 || ^7.0"
+            },
+            "require-dev": {
+                "infection/infection": "^0.29.14",
+                "laravel/pint": "^1.22",
+                "phpstan/phpstan": "^2.1",
+                "phpunit/phpunit": "^12.0",
+                "robiningelbrecht/phpunit-coverage-tools": "^1.9"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Superscript\\Axiom\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "A PHP library for data transformation, type validation, and expression evaluation.",
+            "keywords": [
+                "axiom",
+                "coercion",
+                "php",
+                "types",
+                "validation"
+            ],
+            "support": {
+                "issues": "https://github.com/gosuperscript/axiom/issues",
+                "source": "https://github.com/gosuperscript/axiom/tree/v0.2.0"
+            },
+            "time": "2026-01-07T10:35:14+00:00"
         },
         {
             "name": "gosuperscript/monads",
@@ -6283,5 +6338,5 @@
     "platform-overrides": {
         "php": "8.4.0"
     },
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }
