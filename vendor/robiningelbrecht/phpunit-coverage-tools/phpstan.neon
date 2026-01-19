@@ -1,6 +1,0 @@
-includes:
-	- phpstan.ignore-by-php-version.neon.php
-parameters:
-	level: 9
-	paths:
-		- src

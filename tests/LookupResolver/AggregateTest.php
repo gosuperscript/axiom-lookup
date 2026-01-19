@@ -8,7 +8,9 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\Support\Aggregates\All;
 use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
 use Superscript\Axiom\Lookup\Support\Aggregates\Count;
 use Superscript\Axiom\Lookup\Support\Aggregates\First;
@@ -24,6 +26,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 #[CoversClass(Avg::class)]
 #[CoversClass(Min::class)]
 #[CoversClass(Max::class)]
+#[CoversClass(All::class)]
 #[UsesClass(CsvRecord::class)]
 class AggregateTest extends TestCase
 {
@@ -385,5 +388,74 @@ class AggregateTest extends TestCase
         self::assertFalse(Avg::initial()->canEarlyExit());
         self::assertFalse(Min::initial()->canEarlyExit());
         self::assertFalse(Max::initial()->canEarlyExit());
+    }
+
+    #[Test]
+    public function all_aggregate_collects_records(): void
+    {
+        $state = All::initial();
+        $record1 = CsvRecord::from(['name' => 'Alice']);
+        $record2 = CsvRecord::from(['name' => 'Bob']);
+
+        $state = $state->process($record1, null);
+        $state = $state->process($record2, null);
+
+        self::assertSame(['Alice', 'Bob'], $state->finalize('name'));
+    }
+
+    #[Test]
+    public function all_aggregate_returns_empty_list_when_no_records(): void
+    {
+        self::assertSame([], All::initial()->finalize('name'));
+    }
+
+    #[Test]
+    public function all_aggregate_cannot_early_exit(): void
+    {
+        self::assertFalse(All::initial()->canEarlyExit());
+    }
+
+    #[Test]
+    public function sum_aggregate_requires_aggregate_column(): void
+    {
+        $state = Sum::initial();
+        $record = CsvRecord::from(['price' => '10']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, null);
+    }
+
+    #[Test]
+    public function avg_aggregate_requires_aggregate_column(): void
+    {
+        $state = Avg::initial();
+        $record = CsvRecord::from(['score' => '10']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, null);
+    }
+
+    #[Test]
+    public function min_aggregate_requires_aggregate_column(): void
+    {
+        $state = Min::initial();
+        $record = CsvRecord::from(['price' => '10']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, null);
+    }
+
+    #[Test]
+    public function max_aggregate_requires_aggregate_column(): void
+    {
+        $state = Max::initial();
+        $record = CsvRecord::from(['price' => '10']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, null);
     }
 }

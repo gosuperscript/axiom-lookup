@@ -1,8 +1,0 @@
-services:
-  php:
-    image: superscript/schema
-    build:
-      context: .
-    volumes:
-      - .:/app
-    working_dir: /app
