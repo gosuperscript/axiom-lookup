@@ -16,13 +16,13 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Max;
 use Superscript\Axiom\Lookup\Support\Aggregates\Min;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
-use Superscript\Schema\Source;
+use Superscript\Axiom\Source;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 use Superscript\Monads\Result\Err;
-use Superscript\Schema\Resolvers\Resolver;
+use Superscript\Axiom\Resolvers\Resolver;
 use Throwable;
 
 use function Psl\Iter\all;
@@ -107,7 +107,7 @@ final readonly class LookupResolver implements Resolver
     }
 
     /**
-     * @param list<Filter> $filters
+     * @param array<Filter> $filters
      */
     private function matchesAllFilters(CsvRecord $record, array $filters): bool
     {

@@ -380,6 +380,54 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
+    public function max_aggregate_uses_first_occurrence_for_duplicate_max_values(): void
+    {
+        $state = Max::initial();
+        $record1 = CsvRecord::from(['price' => '30', 'name' => 'Alice']);
+        $record2 = CsvRecord::from(['price' => '30', 'name' => 'Bob']);
+        
+        $state = $state->process($record1, 'price');
+        $state = $state->process($record2, 'price');
+        
+        $result = $state->finalize(['price', 'name']);
+        // Should keep the first occurrence
+        self::assertSame(['price' => '30', 'name' => 'Alice'], $result);
+    }
+
+    #[Test]
+    public function max_aggregate_ignores_null_values(): void
+    {
+        $state = Max::initial();
+        $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
+        $record2 = CsvRecord::from(['price' => null, 'name' => 'Bob']);
+        $record3 = CsvRecord::from(['price' => '30', 'name' => 'Charlie']);
+        
+        $state = $state->process($record1, 'price');
+        $state = $state->process($record2, 'price');
+        $state = $state->process($record3, 'price');
+        
+        $result = $state->finalize(['price', 'name']);
+        self::assertSame(['price' => '30', 'name' => 'Charlie'], $result);
+    }
+
+    #[Test]
+    public function max_aggregate_handles_first_value_as_max(): void
+    {
+        $state = Max::initial();
+        $record1 = CsvRecord::from(['price' => '100', 'name' => 'Alice']);
+        $record2 = CsvRecord::from(['price' => '50', 'name' => 'Bob']);
+        $record3 = CsvRecord::from(['price' => '75', 'name' => 'Charlie']);
+        
+        $state = $state->process($record1, 'price');
+        $state = $state->process($record2, 'price');
+        $state = $state->process($record3, 'price');
+        
+        $result = $state->finalize(['price', 'name']);
+        // First value should be kept as max
+        self::assertSame(['price' => '100', 'name' => 'Alice'], $result);
+    }
+
+    #[Test]
     public function aggregate_states_cannot_early_exit_by_default(): void
     {
         self::assertFalse(Last::initial()->canEarlyExit());

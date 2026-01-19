@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
 use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Schema\Operators\DefaultOverloader;
-use Superscript\Schema\Operators\OperatorOverloader;
-use Superscript\Schema\Operators\OverloaderManager;
-use Superscript\Schema\Source;
+use Superscript\Axiom\Operators\DefaultOverloader;
+use Superscript\Axiom\Operators\OperatorOverloader;
+use Superscript\Axiom\Operators\OverloaderManager;
+use Superscript\Axiom\Source;
 
 final readonly class ValueFilter implements Filter
 {
