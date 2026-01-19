@@ -17,6 +17,56 @@
         ".*match\\s*\\(true\\).*",
       ],
     },
+    "Ternary": {
+      "ignoreSourceCodeByRegex": [
+        ".*hasHeader \\? \\$reader->getRecords\\(\\) : \\$reader->getRecords\\(\\[\\]\\).*",
+      ],
+    },
+    "Break_": {
+      "ignore": [
+        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
+      ],
+    },
+    "FalseValue": {
+      "ignoreSourceCodeByRegex": [
+        ".*unwrapOr\\(false\\)->unwrapOr\\(false\\)\\)\\);.*",
+      ],
+    },
+    "CastBool": {
+      "ignoreSourceCodeByRegex": [
+        ".*return \\(bool\\) \\$this->getOperatorOverloader\\(\\)->evaluate\\(.*",
+      ],
+    },
+    "LogicalAnd": {
+      "ignoreSourceCodeByRegex": [
+        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
+      ],
+    },
+    "LogicalAndAllSubExprNegation": {
+      "ignoreSourceCodeByRegex": [
+        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
+      ],
+    },
+    "LogicalAndNegation": {
+      "ignoreSourceCodeByRegex": [
+        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
+      ],
+    },
+    "LogicalAndSingleSubExprNegation": {
+      "ignoreSourceCodeByRegex": [
+        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
+      ],
+    },
+    "GreaterThanOrEqualTo": {
+      "ignoreSourceCodeByRegex": [
+        ".*return \\$value >= \\$minValue && \\$value < \\$maxValue;.*",
+      ],
+    },
+    "LessThan": {
+      "ignoreSourceCodeByRegex": [
+        ".*return \\$value >= \\$minValue && \\$value < \\$maxValue;.*",
+      ],
+    },
   },
   "logs": {
     "text": "build/infection.log",
