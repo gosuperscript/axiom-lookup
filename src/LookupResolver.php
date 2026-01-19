@@ -16,13 +16,11 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Max;
 use Superscript\Axiom\Lookup\Support\Aggregates\Min;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
-use Superscript\Axiom\Source;
-use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
-use Superscript\Monads\Option\Option;
-use Superscript\Monads\Result\Result;
-use Superscript\Monads\Result\Err;
 use Superscript\Axiom\Resolvers\Resolver;
+use Superscript\Axiom\Source;
+use Superscript\Monads\Option\Option;
+use Superscript\Monads\Result\Err;
+use Superscript\Monads\Result\Result;
 use Throwable;
 
 use function Superscript\Monads\Option\None;
@@ -39,6 +37,7 @@ final readonly class LookupResolver implements Resolver
     ) {}
 
     /**
+     * @param  LookupSource  $source
      * @return Result<Option<mixed>, Throwable>
      */
     public function resolve(Source $source): Result
@@ -112,14 +111,15 @@ final readonly class LookupResolver implements Resolver
     }
 
     /**
-     * @param array<Filter> $filters
+     * @param  array<Filter>  $filters
+     * @return Result<bool, Throwable>
      */
     private function matchesAllFilters(CsvRecord $record, array $filters): Result
     {
         foreach ($filters as $filter) {
             $resolveResult = $this->resolver->resolve($filter->value);
 
-            if ($resolveResult->isErr() || !$filter->matches($record, $resolveResult->unwrap()->unwrapOr(null))) {
+            if ($resolveResult->isErr() || ! $filter->matches($record, $resolveResult->unwrap()->unwrapOr(null))) {
                 return $resolveResult->isErr() ? $resolveResult : Ok(false);
             }
         }
