@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Tests;
 
+use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -18,8 +20,9 @@ use Superscript\Axiom\Sources\StaticSource;
 class LookupResolverPerformanceTest extends TestCase
 {
     private DelegatingResolver $resolver;
-    private string $largeCsvPath;
-    private string $veryLargeCsvPath;
+    private Filesystem $filesystem;
+    private string $largeCsvFilename;
+    private string $veryLargeCsvFilename;
 
     protected function setUp(): void
     {
@@ -28,18 +31,22 @@ class LookupResolverPerformanceTest extends TestCase
             LookupSource::class => LookupResolver::class,
         ]);
         
-        // Create test CSVs in tmp directory
-        $this->largeCsvPath = sys_get_temp_dir() . '/large_test_' . uniqid() . '.csv';
-        $this->veryLargeCsvPath = sys_get_temp_dir() . '/very_large_test_' . uniqid() . '.csv';
+        // Set up Flysystem with local adapter pointing to temp directory
+        $adapter = new LocalFilesystemAdapter(sys_get_temp_dir());
+        $this->filesystem = new Filesystem($adapter);
+        
+        // Store just the filenames (relative paths)
+        $this->largeCsvFilename = 'large_test_' . uniqid() . '.csv';
+        $this->veryLargeCsvFilename = 'very_large_test_' . uniqid() . '.csv';
     }
 
     protected function tearDown(): void
     {
-        if (file_exists($this->largeCsvPath)) {
-            unlink($this->largeCsvPath);
+        if ($this->filesystem->fileExists($this->largeCsvFilename)) {
+            $this->filesystem->delete($this->largeCsvFilename);
         }
-        if (file_exists($this->veryLargeCsvPath)) {
-            unlink($this->veryLargeCsvPath);
+        if ($this->filesystem->fileExists($this->veryLargeCsvFilename)) {
+            $this->filesystem->delete($this->veryLargeCsvFilename);
         }
     }
 
@@ -47,14 +54,15 @@ class LookupResolverPerformanceTest extends TestCase
     public function it_handles_10k_rows_with_low_memory_usage(): void
     {
         // Create a CSV with 10,000 rows
-        $this->createLargeCsv($this->largeCsvPath, 10000);
+        $this->createLargeCsv($this->largeCsvFilename, 10000);
         
         // Measure memory before
         $memoryBefore = memory_get_usage();
         
         // Perform a count aggregate (should use minimal memory)
         $source = new LookupSource(
-            filePath: $this->largeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
@@ -80,14 +88,15 @@ class LookupResolverPerformanceTest extends TestCase
     public function it_handles_100k_rows_with_constant_memory(): void
     {
         // Create a CSV with 100,000 rows
-        $this->createLargeCsv($this->veryLargeCsvPath, 100000);
+        $this->createLargeCsv($this->veryLargeCsvFilename, 100000);
         
         // Measure memory before
         $memoryBefore = memory_get_usage();
         
         // Perform a sum aggregate (should use minimal memory)
         $source = new LookupSource(
-            filePath: $this->veryLargeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->veryLargeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'sum',
             aggregateColumn: 'price',
@@ -114,13 +123,14 @@ class LookupResolverPerformanceTest extends TestCase
     public function first_aggregate_has_early_exit_optimization(): void
     {
         // Create a CSV with 50,000 rows
-        $this->createLargeCsv($this->largeCsvPath, 50000);
+        $this->createLargeCsv($this->largeCsvFilename, 50000);
         
         // Measure time for 'first' aggregate (should be fast with early exit)
         $startTime = microtime(true);
         
         $source = new LookupSource(
-            filePath: $this->largeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'first',
@@ -138,7 +148,8 @@ class LookupResolverPerformanceTest extends TestCase
         $startTime = microtime(true);
         
         $source = new LookupSource(
-            filePath: $this->largeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
@@ -160,13 +171,14 @@ class LookupResolverPerformanceTest extends TestCase
     public function min_max_aggregates_use_constant_memory(): void
     {
         // Create a CSV with 20,000 rows
-        $this->createLargeCsv($this->largeCsvPath, 20000);
+        $this->createLargeCsv($this->largeCsvFilename, 20000);
         
         // Measure memory for min aggregate
         $memoryBefore = memory_get_usage();
         
         $source = new LookupSource(
-            filePath: $this->largeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'min',
@@ -193,7 +205,8 @@ class LookupResolverPerformanceTest extends TestCase
         $memoryBefore = memory_get_usage();
         
         $source = new LookupSource(
-            filePath: $this->largeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'max',
@@ -219,13 +232,14 @@ class LookupResolverPerformanceTest extends TestCase
     public function avg_aggregate_uses_constant_memory(): void
     {
         // Create a CSV with 30,000 rows
-        $this->createLargeCsv($this->largeCsvPath, 30000);
+        $this->createLargeCsv($this->largeCsvFilename, 30000);
         
         // Measure memory for avg aggregate
         $memoryBefore = memory_get_usage();
         
         $source = new LookupSource(
-            filePath: $this->largeCsvPath,
+            filesystem: $this->filesystem,
+            path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'avg',
             aggregateColumn: 'price',
@@ -254,14 +268,15 @@ class LookupResolverPerformanceTest extends TestCase
         
         // Test with 1k, 5k, 10k rows
         foreach ([1000, 5000, 10000] as $rowCount) {
-            $csvPath = sys_get_temp_dir() . '/perf_test_' . $rowCount . '_' . uniqid() . '.csv';
-            $this->createLargeCsv($csvPath, $rowCount);
+            $csvFilename = 'perf_test_' . $rowCount . '_' . uniqid() . '.csv';
+            $this->createLargeCsv($csvFilename, $rowCount);
             
             $startTime = microtime(true);
             $memoryBefore = memory_get_usage();
             
             $source = new LookupSource(
-                filePath: $csvPath,
+                filesystem: $this->filesystem,
+                path: $csvFilename,
                 filters: [new ValueFilter('category', new StaticSource('Electronics'))],
                 aggregate: 'count',
             );
@@ -277,7 +292,7 @@ class LookupResolverPerformanceTest extends TestCase
                 'count' => $result->unwrap()->unwrap(),
             ];
             
-            unlink($csvPath);
+            $this->filesystem->delete($csvFilename);
         }
         
         // Assert memory usage scales linearly or better (not quadratically)
@@ -304,9 +319,10 @@ class LookupResolverPerformanceTest extends TestCase
     /**
      * Create a large CSV file with the specified number of rows
      */
-    private function createLargeCsv(string $path, int $rowCount): void
+    private function createLargeCsv(string $filename, int $rowCount): void
     {
-        $handle = fopen($path, 'w');
+        $fullPath = sys_get_temp_dir() . '/' . $filename;
+        $handle = fopen($fullPath, 'w');
         
         // Write header
         fputcsv($handle, ['id', 'name', 'category', 'price', 'stock'], escape: '\\');
