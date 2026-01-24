@@ -338,15 +338,14 @@ class LookupResolverTest extends TestCase
     #[Test]
     public function it_supports_streaming_large_files(): void
     {
-        // Create a large CSV file for testing streaming
-        $largeCsvPath = $this->getFixturePath('large_test.csv');
-        $handle = fopen($largeCsvPath, 'w');
-        fputcsv($handle, ['id', 'value'], escape: '\\');
+        // Create a large CSV file for testing streaming using Flysystem
+        $csvContent = "id,value\n";
         
         for ($i = 1; $i <= 1000; $i++) {
-            fputcsv($handle, [$i, "value_{$i}"], escape: '\\');
+            $csvContent .= "{$i},value_{$i}\n";
         }
-        fclose($handle);
+        
+        $this->filesystem->write('large_test.csv', $csvContent);
 
         $source = new LookupSource(
             filesystem: $this->filesystem,
@@ -361,7 +360,7 @@ class LookupResolverTest extends TestCase
         $this->assertEquals('value_500', $result->unwrap()->unwrap());
 
         // Cleanup
-        unlink($largeCsvPath);
+        $this->filesystem->delete('large_test.csv');
     }
 
     #[Test]
@@ -599,9 +598,9 @@ class LookupResolverTest extends TestCase
     #[Test]
     public function it_combines_range_lookup_with_exact_filters(): void
     {
-        // Create a CSV with regions and banding
-        $csvPath = $this->getFixturePath('regional_bands.csv');
-        file_put_contents($csvPath, "region,min_value,max_value,rate\nNorth,0,100,5\nNorth,100,200,10\nSouth,0,100,7\nSouth,100,200,12\n");
+        // Create a CSV with regions and banding using Flysystem
+        $csvContent = "region,min_value,max_value,rate\nNorth,0,100,5\nNorth,100,200,10\nSouth,0,100,7\nSouth,100,200,12\n";
+        $this->filesystem->write('regional_bands.csv', $csvContent);
 
         $source = new LookupSource(
             filesystem: $this->filesystem,
@@ -619,7 +618,7 @@ class LookupResolverTest extends TestCase
         $this->assertEquals('10', $result->unwrap()->unwrap()); // North region, 150 in 100-200 band
 
         // Cleanup
-        unlink($csvPath);
+        $this->filesystem->delete('regional_bands.csv');
     }
 
     #[Test]

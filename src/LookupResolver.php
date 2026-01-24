@@ -42,6 +42,8 @@ final readonly class LookupResolver implements Resolver
      */
     public function resolve(Source $source): Result
     {
+        $stream = null;
+        
         try {
             // Read the CSV/TSV file from Flysystem as a stream
             $stream = $source->filesystem->readStream($source->path);
@@ -70,7 +72,6 @@ final readonly class LookupResolver implements Resolver
                 $filterResult = $this->matchesAllFilters($csvRecord, $source->filters);
 
                 if ($filterResult->isErr()) {
-                    fclose($stream);
                     return $filterResult;
                 }
 
@@ -87,9 +88,6 @@ final readonly class LookupResolver implements Resolver
                 }
             }
 
-            // Close the stream
-            fclose($stream);
-
             // Finalize and extract result from aggregate state
             $result = $aggregateState->finalize($source->columns);
 
@@ -100,6 +98,11 @@ final readonly class LookupResolver implements Resolver
             return Ok(Some($result));
         } catch (Throwable $e) {
             return new Err($e);
+        } finally {
+            // Ensure stream is always closed
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         }
     }
 
