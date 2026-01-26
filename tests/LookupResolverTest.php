@@ -292,8 +292,8 @@ class LookupResolverTest extends TestCase
         
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
-        $this->assertInstanceOf(\RuntimeException::class, $error);
-        $this->assertStringContainsString('Could not open file', $error->getMessage());
+        // Flysystem throws its own exception types when file doesn't exist
+        $this->assertStringContainsString('Unable to read file', $error->getMessage());
         $this->assertStringContainsString('non_existent_file.csv', $error->getMessage());
     }
 
@@ -837,7 +837,7 @@ class LookupResolverTest extends TestCase
     #[Test]
     public function it_properly_handles_stream_when_file_cannot_be_opened(): void
     {
-        // Test that when readStream returns false, we get a proper error
+        // Test that when readStream throws an exception, we get a proper error
         // and no stream resource leaks occur
         $source = new LookupSource(
             filesystem: $this->filesystem,
@@ -852,9 +852,9 @@ class LookupResolverTest extends TestCase
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
         
-        // Verify it's a RuntimeException with the expected message
-        $this->assertInstanceOf(\RuntimeException::class, $error);
-        $this->assertStringContainsString('Could not open file', $error->getMessage());
+        // Verify exception contains expected information
+        // Flysystem throws its own exception when file cannot be read
+        $this->assertStringContainsString('Unable to read file', $error->getMessage());
         $this->assertStringContainsString('definitely_does_not_exist_12345.csv', $error->getMessage());
         
         // If we got here without crashes, stream cleanup worked correctly
