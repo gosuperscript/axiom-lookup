@@ -30,17 +30,6 @@
     "FalseValue": {
       "ignoreSourceCodeByRegex": [
         ".*unwrapOr\\(false\\)->unwrapOr\\(false\\)\\)\\);.*",
-        ".*if \\(\\$stream === false\\).*",
-      ],
-    },
-    "IdenticalEqual": {
-      "ignoreSourceCodeByRegex": [
-        ".*if \\(\\$stream === false\\).*",
-      ],
-    },
-    "NotIdenticalNotEqual": {
-      "ignoreSourceCodeByRegex": [
-        ".*if \\(\\$stream === false\\).*",
       ],
     },
     "CastBool": {
@@ -66,16 +55,6 @@
     "LogicalAndSingleSubExprNegation": {
       "ignoreSourceCodeByRegex": [
         ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
-      ],
-    },
-    "Identical": {
-      "ignoreSourceCodeByRegex": [
-        ".*if \\(is_resource\\(\\$stream\\)\\).*",
-      ],
-    },
-    "PublicVisibility": {
-      "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
       ],
     },
     "GreaterThanOrEqualTo": {
