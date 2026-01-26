@@ -11,6 +11,7 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 - **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
 - **Strongly-Typed Value Objects**: Enhanced type safety with immutable aggregates
 - **Early Exit Optimization**: `first` aggregate stops reading after first match (465x faster)
+- **Flexible Storage**: Support for local files, S3, and other storage backends via Flysystem
 - **PHP 8.4 Compatible**: Full compatibility with latest PHP features
 
 ## Installation
@@ -22,20 +23,87 @@ composer require gosuperscript/axiom-lookup
 ## Quick Start
 
 ```php
+use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter;
 use Superscript\Axiom\Lookup\{LookupSource, ValueFilter, StaticSource};
+
+// Create a filesystem instance (local filesystem example)
+$adapter = new LocalFilesystemAdapter('/path/to/data');
+$filesystem = new Filesystem($adapter);
 
 // Simple lookup
 $lookup = new LookupSource(
-    filePath: '/data/products.csv',
+    filesystem: $filesystem,
+    path: 'products.csv',
     filters: [new ValueFilter('category', new StaticSource('Electronics'))],
     columns: 'price'
 );
 ```
 
+## Using Different Storage Backends
+
+The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends:
+
+### Local Filesystem
+
+```php
+use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter;
+
+$adapter = new LocalFilesystemAdapter('/path/to/data');
+$filesystem = new Filesystem($adapter);
+
+$lookup = new LookupSource(
+    filesystem: $filesystem,
+    path: 'users.csv',
+    filters: [new ValueFilter('status', new StaticSource('active'))],
+    columns: ['name', 'email']
+);
+```
+
+### Amazon S3
+
+```php
+use League\Flysystem\Filesystem;
+use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
+use Aws\S3\S3Client;
+
+$client = new S3Client([
+    'credentials' => [
+        'key'    => 'your-key',
+        'secret' => 'your-secret',
+    ],
+    'region' => 'us-east-1',
+    'version' => 'latest',
+]);
+
+$adapter = new AwsS3V3Adapter($client, 'your-bucket-name');
+$filesystem = new Filesystem($adapter);
+
+$lookup = new LookupSource(
+    filesystem: $filesystem,
+    path: 'data/products.csv',
+    filters: [new ValueFilter('category', new StaticSource('Books'))],
+    columns: 'price'
+);
+```
+
+### Other Storage Options
+
+Flysystem supports many adapters including:
+- FTP/SFTP
+- Azure Blob Storage
+- Google Cloud Storage
+- In-memory filesystem
+- And many more...
+
+See the [Flysystem documentation](https://flysystem.thephpleague.com/docs/) for more options.
+
 ## Requirements
 
 - PHP 8.4+
 - league/csv ^9.27.0
+- league/flysystem ^3.0
 - gosuperscript/monads
 
 ## Documentation
@@ -73,3 +141,4 @@ Proprietary
 ## Credits
 
 Developed by GoSuperscript
+# Rebased on latest main

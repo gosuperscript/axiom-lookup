@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
+use League\Flysystem\FilesystemOperator;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Source;
 
 final readonly class LookupSource implements Source
 {
     /**
-     * @param string $filePath
+     * @param FilesystemOperator $filesystem
+     * @param string $path
      * @param array<Filter> $filters
      * @param array<string|int> $columns
      * @param string $aggregate
@@ -19,7 +21,8 @@ final readonly class LookupSource implements Source
      * @param bool $hasHeader
      */
     public function __construct(
-        public string $filePath,
+        public FilesystemOperator $filesystem,
+        public string $path,
         public array $filters = [],
         public array $columns = [],
         public string $aggregate = 'first',
