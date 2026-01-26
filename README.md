@@ -141,3 +141,4 @@ Proprietary
 ## Credits
 
 Developed by GoSuperscript
+# Rebased on latest main
