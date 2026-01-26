@@ -30,6 +30,7 @@
     "FalseValue": {
       "ignoreSourceCodeByRegex": [
         ".*unwrapOr\\(false\\)->unwrapOr\\(false\\)\\)\\);.*",
+        ".*if \\(\\$stream === false\\).*",
       ],
     },
     "CastBool": {
@@ -65,6 +66,16 @@
     "LessThan": {
       "ignoreSourceCodeByRegex": [
         ".*return \\$value >= \\$minValue && \\$value < \\$maxValue;.*",
+      ],
+    },
+    "Finally_": {
+      "ignore": [
+        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
+      ],
+    },
+    "UnwrapFinally": {
+      "ignore": [
+        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
       ],
     },
   },
