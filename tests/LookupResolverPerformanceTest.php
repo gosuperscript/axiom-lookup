@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Tests;
 
 use League\Flysystem\Filesystem;
+use League\Flysystem\FilesystemOperator;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
@@ -34,7 +35,8 @@ class LookupResolverPerformanceTest extends TestCase
         // Set up Flysystem with local adapter pointing to temp directory
         $adapter = new LocalFilesystemAdapter(sys_get_temp_dir());
         $this->filesystem = new Filesystem($adapter);
-        
+        $this->resolver->instance(FilesystemOperator::class, $this->filesystem);
+
         // Store just the filenames (relative paths)
         $this->largeCsvFilename = 'large_test_' . uniqid() . '.csv';
         $this->veryLargeCsvFilename = 'very_large_test_' . uniqid() . '.csv';
@@ -61,7 +63,6 @@ class LookupResolverPerformanceTest extends TestCase
         
         // Perform a count aggregate (should use minimal memory)
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
@@ -95,7 +96,6 @@ class LookupResolverPerformanceTest extends TestCase
         
         // Perform a sum aggregate (should use minimal memory)
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->veryLargeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'sum',
@@ -129,7 +129,6 @@ class LookupResolverPerformanceTest extends TestCase
         $startTime = microtime(true);
         
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
@@ -148,7 +147,6 @@ class LookupResolverPerformanceTest extends TestCase
         $startTime = microtime(true);
         
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
@@ -177,7 +175,6 @@ class LookupResolverPerformanceTest extends TestCase
         $memoryBefore = memory_get_usage();
         
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
@@ -205,7 +202,6 @@ class LookupResolverPerformanceTest extends TestCase
         $memoryBefore = memory_get_usage();
         
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
@@ -238,7 +234,6 @@ class LookupResolverPerformanceTest extends TestCase
         $memoryBefore = memory_get_usage();
         
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: $this->largeCsvFilename,
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
             aggregate: 'avg',
@@ -275,7 +270,6 @@ class LookupResolverPerformanceTest extends TestCase
             $memoryBefore = memory_get_usage();
             
             $source = new LookupSource(
-                filesystem: $this->filesystem,
                 path: $csvFilename,
                 filters: [new ValueFilter('category', new StaticSource('Electronics'))],
                 aggregate: 'count',
