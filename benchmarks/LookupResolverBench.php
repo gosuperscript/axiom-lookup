@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Benchmarks;
 
-use Illuminate\Container\Container;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use PhpBench\Attributes\{BeforeMethods, Groups, Iterations, Revs, Warmup};
