@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup;
 
 use League\Csv\Reader;
+use League\Flysystem\FilesystemOperator;
 use RuntimeException;
 use Superscript\Axiom\Lookup\Support\Aggregates\Aggregate;
 use Superscript\Axiom\Lookup\Support\Aggregates\All;
@@ -33,6 +34,7 @@ use function Superscript\Monads\Result\Ok;
 final readonly class LookupResolver implements Resolver
 {
     public function __construct(
+        private FilesystemOperator $filesystem,
         private Resolver $resolver,
     ) {}
 
@@ -46,7 +48,7 @@ final readonly class LookupResolver implements Resolver
         
         try {
             // Read the CSV/TSV file from Flysystem as a stream
-            $stream = $source->filesystem->readStream($source->path);
+            $stream = $this->filesystem->readStream($source->path);
             
             if ($stream === false) {
                 throw new RuntimeException("Could not open file: {$source->path}");
