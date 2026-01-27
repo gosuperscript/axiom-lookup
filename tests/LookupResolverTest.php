@@ -40,14 +40,15 @@ class LookupResolverTest extends TestCase
 
     protected function setUp(): void
     {
+        // Create a Flysystem adapter for the fixtures directory
+        $adapter = new LocalFilesystemAdapter(__DIR__ . '/Fixtures');
+        $this->filesystem = new Filesystem($adapter);
+
         $this->resolver = new DelegatingResolver([
             StaticSource::class => StaticResolver::class,
             LookupSource::class => LookupResolver::class,
         ]);
-        
-        // Create a Flysystem adapter for the fixtures directory
-        $adapter = new LocalFilesystemAdapter(__DIR__ . '/Fixtures');
-        $this->filesystem = new Filesystem($adapter);
+        $this->resolver->instance(\League\Flysystem\FilesystemOperator::class, $this->filesystem);
     }
 
     private function getFixturePath(string $filename): string
@@ -59,7 +60,6 @@ class LookupResolverTest extends TestCase
     public function it_can_lookup_single_column_from_csv_with_single_filter(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: ['age'],
@@ -75,14 +75,13 @@ class LookupResolverTest extends TestCase
     public function it_can_lookup_multiple_columns_from_csv(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Bob'))],
             columns: ['name', 'age', 'city'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $expected = [
             'name' => 'Bob',
@@ -96,7 +95,6 @@ class LookupResolverTest extends TestCase
     public function it_can_lookup_from_tsv_file(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'products.tsv',
             delimiter: "\t",
             filters: [new ValueFilter('product', new StaticSource('Laptop'))],
@@ -104,7 +102,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('999.99', $result->unwrap()->unwrap());
     }
@@ -113,7 +111,6 @@ class LookupResolverTest extends TestCase
     public function it_can_filter_with_multiple_keys(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [
                 new ValueFilter('city', new StaticSource('NYC')),
@@ -123,7 +120,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('Alice', $result->unwrap()->unwrap());
     }
@@ -132,7 +129,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_first_match_by_default(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['name'],
@@ -140,7 +136,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('Alice', $result->unwrap()->unwrap());
     }
@@ -149,7 +145,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_last_match_with_last_strategy(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['name'],
@@ -157,7 +152,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('Charlie', $result->unwrap()->unwrap());
     }
@@ -166,7 +161,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_min_match_with_min_strategy(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['salary'],
@@ -175,7 +169,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('75000', $result->unwrap()->unwrap());
     }
@@ -184,7 +178,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_max_match_with_max_strategy(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['salary'],
@@ -193,7 +186,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('85000', $result->unwrap()->unwrap());
     }
@@ -202,14 +195,13 @@ class LookupResolverTest extends TestCase
     public function it_returns_none_when_no_match_found(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('NonExistent'))],
             columns: ['age'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
     }
@@ -218,14 +210,13 @@ class LookupResolverTest extends TestCase
     public function it_returns_all_columns_when_columns_is_empty(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: [],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $row = $result->unwrap()->unwrap();
         $this->assertIsArray($row);
@@ -238,7 +229,6 @@ class LookupResolverTest extends TestCase
     public function it_can_work_with_file_without_header(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'no_header.csv',
             filters: [new ValueFilter(0, new StaticSource('2'))],
             columns: [1],
@@ -246,7 +236,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('Bob', $result->unwrap()->unwrap());
     }
@@ -256,21 +246,19 @@ class LookupResolverTest extends TestCase
     {
         // Using a nested LookupSource as a filter value
         $cityLookup = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Bob'))],
             columns: ['city'],
         );
 
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', $cityLookup)],
             columns: ['name', 'age'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $matches = $result->unwrap()->unwrap();
         $this->assertIsArray($matches);
@@ -282,14 +270,13 @@ class LookupResolverTest extends TestCase
     public function it_returns_error_for_non_existent_file(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'non_existent_file.csv',
             filters: [],
             columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
         // Flysystem throws its own exception types when file doesn't exist
@@ -301,7 +288,6 @@ class LookupResolverTest extends TestCase
     public function it_handles_min_strategy_with_multiple_columns(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'products.tsv',
             delimiter: "\t",
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
@@ -311,7 +297,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $data = $result->unwrap()->unwrap();
         $this->assertEquals('Mouse', $data['product']);
@@ -322,7 +308,6 @@ class LookupResolverTest extends TestCase
     public function it_handles_max_strategy_with_multiple_columns(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'products.tsv',
             delimiter: "\t",
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
@@ -332,7 +317,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $data = $result->unwrap()->unwrap();
         $this->assertEquals('Laptop', $data['product']);
@@ -344,22 +329,21 @@ class LookupResolverTest extends TestCase
     {
         // Create a large CSV file for testing streaming using Flysystem
         $csvContent = "id,value\n";
-        
+
         for ($i = 1; $i <= 1000; $i++) {
             $csvContent .= "{$i},value_{$i}\n";
         }
-        
+
         $this->filesystem->write('large_test.csv', $csvContent);
 
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'large_test.csv',
             filters: [new ValueFilter('id', new StaticSource('500'))],
             columns: ['value'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('value_500', $result->unwrap()->unwrap());
 
@@ -371,21 +355,19 @@ class LookupResolverTest extends TestCase
     public function it_returns_none_when_filter_source_resolves_to_none(): void
     {
         $noneSource = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('NonExistent'))],
             columns: ['city'],
         );
 
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', $noneSource)],
             columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
     }
@@ -394,14 +376,13 @@ class LookupResolverTest extends TestCase
     public function it_handles_empty_filter_keys(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [],
             columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         // Should return first row when no filters
         $this->assertEquals('Alice', $result->unwrap()->unwrap());
@@ -411,7 +392,6 @@ class LookupResolverTest extends TestCase
     public function it_throws_error_for_unknown_aggregate(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: ['age'],
@@ -419,7 +399,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isErr());
     }
 
@@ -427,7 +407,6 @@ class LookupResolverTest extends TestCase
     public function it_throws_error_for_min_aggregate_without_aggregate_column(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['salary'],
@@ -435,7 +414,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isErr());
     }
 
@@ -443,7 +422,6 @@ class LookupResolverTest extends TestCase
     public function it_throws_error_for_max_aggregate_without_aggregate_column(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['salary'],
@@ -451,7 +429,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isErr());
     }
 
@@ -459,14 +437,13 @@ class LookupResolverTest extends TestCase
     public function it_returns_count_of_matching_rows(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'count',
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals(2, $result->unwrap()->unwrap()); // Alice and Charlie are in NYC
     }
@@ -475,7 +452,6 @@ class LookupResolverTest extends TestCase
     public function it_calculates_sum_of_column_values(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'sum',
@@ -483,7 +459,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals(160000, $result->unwrap()->unwrap()); // 75000 + 85000
     }
@@ -492,7 +468,6 @@ class LookupResolverTest extends TestCase
     public function it_calculates_avg_of_column_values(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'avg',
@@ -500,7 +475,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals(80000.0, $result->unwrap()->unwrap()); // (75000 + 85000) / 2
     }
@@ -509,14 +484,13 @@ class LookupResolverTest extends TestCase
     public function it_throws_error_for_sum_without_aggregate_column(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'sum',
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isErr());
     }
 
@@ -524,14 +498,13 @@ class LookupResolverTest extends TestCase
     public function it_throws_error_for_avg_without_aggregate_column(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             aggregate: 'avg',
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isErr());
     }
 
@@ -539,14 +512,13 @@ class LookupResolverTest extends TestCase
     public function it_supports_range_based_lookup_for_banding(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'premium_bands.csv',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('150000'))],
             columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('15', $result->unwrap()->unwrap()); // 150k falls in 100k-200k band
     }
@@ -555,14 +527,13 @@ class LookupResolverTest extends TestCase
     public function it_supports_range_lookup_for_lower_band(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'premium_bands.csv',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('50000'))],
             columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('10', $result->unwrap()->unwrap()); // 50k falls in 0-100k band
     }
@@ -571,14 +542,13 @@ class LookupResolverTest extends TestCase
     public function it_supports_range_lookup_for_upper_band(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'premium_bands.csv',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('500000'))],
             columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('25', $result->unwrap()->unwrap()); // 500k falls in 300k+ band
     }
@@ -587,14 +557,13 @@ class LookupResolverTest extends TestCase
     public function it_supports_range_lookup_at_band_boundary(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'premium_bands.csv',
             filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('100000'))],
             columns: ['premium'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('15', $result->unwrap()->unwrap()); // 100k falls in 100k-200k band (inclusive)
     }
@@ -607,7 +576,6 @@ class LookupResolverTest extends TestCase
         $this->filesystem->write('regional_bands.csv', $csvContent);
 
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'regional_bands.csv',
             filters: [
                 new ValueFilter('region', new StaticSource('North')),
@@ -617,7 +585,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         $this->assertTrue($result->isOk());
         $this->assertEquals('10', $result->unwrap()->unwrap()); // North region, 150 in 100-200 band
 
@@ -629,7 +597,6 @@ class LookupResolverTest extends TestCase
     public function it_throws_exception_for_unknown_aggregate(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: ['age'],
@@ -646,7 +613,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_none_for_avg_when_count_is_zero(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('NonExistentPerson'))],
             columns: ['age'],
@@ -664,7 +630,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_none_for_sum_when_no_matches(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('NonExistentPerson'))],
             columns: ['age'],
@@ -686,12 +651,12 @@ class LookupResolverTest extends TestCase
         if ($tempFile === false) {
             $this->fail('Failed to create temp file');
         }
-        
+
         $handle = fopen($tempFile, 'w');
         if ($handle === false) {
             $this->fail('Failed to open temp file');
         }
-        
+
         fputcsv($handle, ['name', 'value'], escape: '\\');
         fputcsv($handle, ['Item1', '0'], escape: '\\');
         fputcsv($handle, ['Item2', '0'], escape: '\\');
@@ -700,9 +665,15 @@ class LookupResolverTest extends TestCase
         $tempDir = sys_get_temp_dir();
         $tempAdapter = new LocalFilesystemAdapter($tempDir);
         $tempFilesystem = new Filesystem($tempAdapter);
-        
+
+        // Create a custom resolver with the temp filesystem
+        $tempResolver = new DelegatingResolver([
+            StaticSource::class => StaticResolver::class,
+            LookupSource::class => LookupResolver::class,
+        ]);
+        $tempResolver->instance(\League\Flysystem\FilesystemOperator::class, $tempFilesystem);
+
         $source = new LookupSource(
-            filesystem: $tempFilesystem,
             path: basename($tempFile),
             filters: [new ValueFilter('name', new StaticSource('Item1'))],
             columns: ['value'],
@@ -710,7 +681,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'value',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $tempResolver->resolve($source);
 
         unlink($tempFile);
 
@@ -723,12 +694,11 @@ class LookupResolverTest extends TestCase
     public function it_can_retrieve_all_results_using_in_operator(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter(
                 value: new StaticSource(['Bob', 'Charlie', 'Eve']),
                 column: 'name',
-                operator: 'in'
+                operator: 'in',
             )],
             columns: ['salary'],
             aggregate: 'all',
@@ -748,7 +718,6 @@ class LookupResolverTest extends TestCase
     public function it_returns_none_when_no_results_are_found_for_all_aggregate(): void
     {
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter(
                 value: new StaticSource('Peter'),
@@ -769,9 +738,9 @@ class LookupResolverTest extends TestCase
     {
         $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
         $record = CsvRecord::from(['max_price' => '200', 'name' => 'Product']); // min_price is missing
-        
+
         $result = $filter->matches($record, '100');
-        
+
         $this->assertFalse($result);
     }
 
@@ -780,9 +749,9 @@ class LookupResolverTest extends TestCase
     {
         $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
         $record = CsvRecord::from(['min_price' => '50', 'name' => 'Product']); // max_price is missing
-        
+
         $result = $filter->matches($record, '100');
-        
+
         $this->assertFalse($result);
     }
 
@@ -793,22 +762,22 @@ class LookupResolverTest extends TestCase
         $record = CsvRecord::from([
             'min_value' => '50',
             'max_value' => '150',
-            'name' => 'Product'
+            'name' => 'Product',
         ]);
-        
+
         // Should work with numeric values - [min, max) range
         $this->assertTrue($filter->matches($record, '100'));
         $this->assertTrue($filter->matches($record, '50')); // Exactly at min (included)
         $this->assertFalse($filter->matches($record, '150')); // At max (excluded)
         $this->assertFalse($filter->matches($record, '200')); // Above max
-        
+
         // Test with non-numeric comparisons
         $record2 = CsvRecord::from([
             'min_value' => 'abc',
             'max_value' => 'xyz',
-            'name' => 'Product2'
+            'name' => 'Product2',
         ]);
-        
+
         $this->assertTrue($filter->matches($record2, 'def')); // 'def' >= 'abc' && 'def' < 'xyz'
         $this->assertFalse($filter->matches($record2, 'aaa')); // Below min
     }
@@ -818,9 +787,8 @@ class LookupResolverTest extends TestCase
     {
         // Create a fixture with multiple matching records
         $fixturePath = $this->getFixturePath('users.csv');
-        
+
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [new ValueFilter('city', new StaticSource('NYC'))],
             columns: ['name'],
@@ -828,7 +796,7 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         // Should return Alice (first match), not Charlie (second match from NYC)
         $this->assertTrue($result->isOk());
         $this->assertEquals('Alice', $result->unwrap()->unwrap());
@@ -840,23 +808,22 @@ class LookupResolverTest extends TestCase
         // Test that when readStream throws an exception, we get a proper error
         // and no stream resource leaks occur
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'definitely_does_not_exist_12345.csv',
             filters: [],
             columns: ['name'],
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         // Verify error is returned
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
-        
+
         // Verify exception contains expected information
         // Flysystem throws its own exception when file cannot be read
         $this->assertStringContainsString('Unable to read file', $error->getMessage());
         $this->assertStringContainsString('definitely_does_not_exist_12345.csv', $error->getMessage());
-        
+
         // If we got here without crashes, stream cleanup worked correctly
     }
 
@@ -866,7 +833,6 @@ class LookupResolverTest extends TestCase
         // Test that stream is properly closed when an error occurs after opening the file
         // This tests the finally block cleanup when exceptions happen during processing
         $source = new LookupSource(
-            filesystem: $this->filesystem,
             path: 'users.csv',
             filters: [],
             columns: ['name'],
@@ -874,12 +840,12 @@ class LookupResolverTest extends TestCase
         );
 
         $result = $this->resolver->resolve($source);
-        
+
         // Verify error is returned (aggregate error occurs after stream is opened)
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
         $this->assertStringContainsString('Unknown aggregate', $error->getMessage());
-        
+
         // The key point: If stream wasn't closed in finally block, we'd have resource leaks
         // This test passing means finally block executed and closed the stream
     }
@@ -891,16 +857,22 @@ class LookupResolverTest extends TestCase
         // Create a mock filesystem that returns false
         $mockFilesystem = $this->createMock(\League\Flysystem\FilesystemOperator::class);
         $mockFilesystem->method('readStream')->willReturn(false);
-        
+
+        // Create a custom resolver with the mock filesystem
+        $mockResolver = new DelegatingResolver([
+            StaticSource::class => StaticResolver::class,
+            LookupSource::class => LookupResolver::class,
+        ]);
+        $mockResolver->instance(\League\Flysystem\FilesystemOperator::class, $mockFilesystem);
+
         $source = new LookupSource(
-            filesystem: $mockFilesystem,
             path: 'test.csv',
             filters: [],
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
-        
+        $result = $mockResolver->resolve($source);
+
         // Should get RuntimeException with "Could not open file" message
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
@@ -909,4 +881,3 @@ class LookupResolverTest extends TestCase
         $this->assertStringContainsString('test.csv', $error->getMessage());
     }
 }
-

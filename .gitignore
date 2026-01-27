@@ -18,3 +18,5 @@ yarn-error.log
 /.idea
 /.fleet
 /.vscode
+tests/Fixtures/large_test.csv
+tests/Fixtures/regional_bands.csv

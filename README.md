@@ -25,40 +25,58 @@ composer require gosuperscript/axiom-lookup
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
-use Superscript\Axiom\Lookup\{LookupSource, ValueFilter, StaticSource};
+use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
+use Superscript\Axiom\Resolvers\DelegatingResolver;
 
 // Create a filesystem instance (local filesystem example)
 $adapter = new LocalFilesystemAdapter('/path/to/data');
 $filesystem = new Filesystem($adapter);
 
-// Simple lookup
+// Set up the resolver with the filesystem
+$resolver = new DelegatingResolver([
+    LookupSource::class => LookupResolver::class,
+]);
+$resolver->instance(\League\Flysystem\FilesystemOperator::class, $filesystem);
+
+// Define a lookup source
 $lookup = new LookupSource(
-    filesystem: $filesystem,
     path: 'products.csv',
     filters: [new ValueFilter('category', new StaticSource('Electronics'))],
     columns: 'price'
 );
+
+// Resolve the lookup
+$result = $resolver->resolve($lookup);
 ```
 
 ## Using Different Storage Backends
 
-The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends:
+The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends. The filesystem adapter is configured on the `LookupResolver`, allowing you to set the right filesystem adapter at runtime.
 
 ### Local Filesystem
 
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
+use Superscript\Axiom\Resolvers\DelegatingResolver;
 
 $adapter = new LocalFilesystemAdapter('/path/to/data');
 $filesystem = new Filesystem($adapter);
 
+// Configure resolver with filesystem
+$resolver = new DelegatingResolver([
+    LookupSource::class => LookupResolver::class,
+]);
+$resolver->instance(\League\Flysystem\FilesystemOperator::class, $filesystem);
+
 $lookup = new LookupSource(
-    filesystem: $filesystem,
     path: 'users.csv',
     filters: [new ValueFilter('status', new StaticSource('active'))],
     columns: ['name', 'email']
 );
+
+$result = $resolver->resolve($lookup);
 ```
 
 ### Amazon S3
@@ -67,6 +85,8 @@ $lookup = new LookupSource(
 use League\Flysystem\Filesystem;
 use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
 use Aws\S3\S3Client;
+use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
+use Superscript\Axiom\Resolvers\DelegatingResolver;
 
 $client = new S3Client([
     'credentials' => [
@@ -80,12 +100,19 @@ $client = new S3Client([
 $adapter = new AwsS3V3Adapter($client, 'your-bucket-name');
 $filesystem = new Filesystem($adapter);
 
+// Configure resolver with S3 filesystem
+$resolver = new DelegatingResolver([
+    LookupSource::class => LookupResolver::class,
+]);
+$resolver->instance(\League\Flysystem\FilesystemOperator::class, $filesystem);
+
 $lookup = new LookupSource(
-    filesystem: $filesystem,
     path: 'data/products.csv',
     filters: [new ValueFilter('category', new StaticSource('Books'))],
     columns: 'price'
 );
+
+$result = $resolver->resolve($lookup);
 ```
 
 ### Other Storage Options
