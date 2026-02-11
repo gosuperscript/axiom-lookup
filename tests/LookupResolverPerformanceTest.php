@@ -13,8 +13,12 @@ use PHPUnit\Framework\TestCase;
 use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Operators\DefaultOverloader;
+use Superscript\Axiom\Operators\OperatorOverloader;
+use Superscript\Axiom\Operators\OverloaderManager;
 use Superscript\Axiom\Resolvers\DelegatingResolver;
 use Superscript\Axiom\Resolvers\StaticResolver;
+use Superscript\Axiom\Source;
 use Superscript\Axiom\Sources\StaticSource;
 
 #[CoversNothing]
@@ -22,11 +26,13 @@ class LookupResolverPerformanceTest extends TestCase
 {
     private DelegatingResolver $resolver;
     private Filesystem $filesystem;
+    private OperatorOverloader $overloader;
     private string $largeCsvFilename;
     private string $veryLargeCsvFilename;
 
     protected function setUp(): void
     {
+        $this->overloader = new OverloaderManager([new DefaultOverloader()]);
         $this->resolver = new DelegatingResolver([
             StaticSource::class => StaticResolver::class,
             LookupSource::class => LookupResolver::class,
@@ -52,6 +58,11 @@ class LookupResolverPerformanceTest extends TestCase
         }
     }
 
+    private function filter(string|int $column, Source $value, string $operator = '=='): ValueFilter
+    {
+        return new ValueFilter($column, $value, $this->overloader, $operator);
+    }
+
     #[Test]
     public function it_handles_10k_rows_with_low_memory_usage(): void
     {
@@ -64,7 +75,7 @@ class LookupResolverPerformanceTest extends TestCase
         // Perform a count aggregate (should use minimal memory)
         $source = new LookupSource(
             path: $this->largeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
         
@@ -97,7 +108,7 @@ class LookupResolverPerformanceTest extends TestCase
         // Perform a sum aggregate (should use minimal memory)
         $source = new LookupSource(
             path: $this->veryLargeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             aggregate: 'sum',
             aggregateColumn: 'price',
         );
@@ -130,7 +141,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             path: $this->largeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'first',
         );
@@ -148,7 +159,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             path: $this->largeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             aggregate: 'count',
         );
         
@@ -176,7 +187,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             path: $this->largeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'min',
             aggregateColumn: 'price',
@@ -203,7 +214,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             path: $this->largeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
             aggregate: 'max',
             aggregateColumn: 'price',
@@ -235,7 +246,7 @@ class LookupResolverPerformanceTest extends TestCase
         
         $source = new LookupSource(
             path: $this->largeCsvFilename,
-            filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+            filters: [$this->filter('category', new StaticSource('Electronics'))],
             aggregate: 'avg',
             aggregateColumn: 'price',
         );
@@ -271,7 +282,7 @@ class LookupResolverPerformanceTest extends TestCase
             
             $source = new LookupSource(
                 path: $csvFilename,
-                filters: [new ValueFilter('category', new StaticSource('Electronics'))],
+                filters: [$this->filter('category', new StaticSource('Electronics'))],
                 aggregate: 'count',
             );
             
