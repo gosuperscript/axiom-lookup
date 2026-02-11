@@ -14,7 +14,7 @@
     ],
     "require": {
         "php": "^8.4",
-        "gosuperscript/axiom": "^0.2.0",
+        "gosuperscript/axiom": "^0.2.0 || ^0.3.0",
         "gosuperscript/monads": "^1.0.0",
         "league/csv": "^9.27.0",
         "league/flysystem": "^3.0"
