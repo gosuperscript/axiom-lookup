@@ -6,6 +6,9 @@ namespace Superscript\Axiom\Lookup\Support\Filters;
 
 use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Source;
+use Superscript\Monads\Result\Result;
+
+use function Superscript\Monads\Result\Ok;
 
 final readonly class RangeFilter implements Filter
 {
@@ -15,10 +18,11 @@ final readonly class RangeFilter implements Filter
         public Source $value,
     ) {}
 
-    public function matches(CsvRecord $record, mixed $value): bool
+    /** @return Result<bool, \Throwable> */
+    public function matches(CsvRecord $record, mixed $value): Result
     {
         if (! $record->has($this->minColumn) || ! $record->has($this->maxColumn)) {
-            return false;
+            return Ok(false);
         }
 
         $minValue = $record->get($this->minColumn);
@@ -26,9 +30,9 @@ final readonly class RangeFilter implements Filter
 
         // [min, max) range
         if (is_numeric($value) && is_numeric($minValue) && is_numeric($maxValue)) {
-            return $value >= $minValue && $value < $maxValue;
+            return Ok($value >= $minValue && $value < $maxValue);
         }
 
-        return $value >= $minValue && $value < $maxValue;
+        return Ok($value >= $minValue && $value < $maxValue);
     }
 }

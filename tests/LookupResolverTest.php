@@ -733,10 +733,11 @@ class LookupResolverTest extends TestCase
     {
         $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
         $record = CsvRecord::from(['max_price' => '200', 'name' => 'Product']); // min_price is missing
-        
+
         $result = $filter->matches($record, '100');
-        
-        $this->assertFalse($result);
+
+        $this->assertTrue($result->isOk());
+        $this->assertFalse($result->mapOr(true, fn (bool $v) => $v));
     }
 
     #[Test]
@@ -744,10 +745,11 @@ class LookupResolverTest extends TestCase
     {
         $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
         $record = CsvRecord::from(['min_price' => '50', 'name' => 'Product']); // max_price is missing
-        
+
         $result = $filter->matches($record, '100');
-        
-        $this->assertFalse($result);
+
+        $this->assertTrue($result->isOk());
+        $this->assertFalse($result->mapOr(true, fn (bool $v) => $v));
     }
 
     #[Test]
@@ -759,22 +761,22 @@ class LookupResolverTest extends TestCase
             'max_value' => '150',
             'name' => 'Product'
         ]);
-        
+
         // Should work with numeric values - [min, max) range
-        $this->assertTrue($filter->matches($record, '100'));
-        $this->assertTrue($filter->matches($record, '50')); // Exactly at min (included)
-        $this->assertFalse($filter->matches($record, '150')); // At max (excluded)
-        $this->assertFalse($filter->matches($record, '200')); // Above max
-        
+        $this->assertTrue($filter->matches($record, '100')->mapOr(false, fn (bool $v) => $v));
+        $this->assertTrue($filter->matches($record, '50')->mapOr(false, fn (bool $v) => $v)); // Exactly at min (included)
+        $this->assertFalse($filter->matches($record, '150')->mapOr(true, fn (bool $v) => $v)); // At max (excluded)
+        $this->assertFalse($filter->matches($record, '200')->mapOr(true, fn (bool $v) => $v)); // Above max
+
         // Test with non-numeric comparisons
         $record2 = CsvRecord::from([
             'min_value' => 'abc',
             'max_value' => 'xyz',
             'name' => 'Product2'
         ]);
-        
-        $this->assertTrue($filter->matches($record2, 'def')); // 'def' >= 'abc' && 'def' < 'xyz'
-        $this->assertFalse($filter->matches($record2, 'aaa')); // Below min
+
+        $this->assertTrue($filter->matches($record2, 'def')->mapOr(false, fn (bool $v) => $v)); // 'def' >= 'abc' && 'def' < 'xyz'
+        $this->assertFalse($filter->matches($record2, 'aaa')->mapOr(true, fn (bool $v) => $v)); // Below min
     }
 
     #[Test]

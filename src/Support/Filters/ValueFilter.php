@@ -19,15 +19,14 @@ final readonly class ValueFilter implements Filter
         public string $operator = '==',
     ) {}
 
-    public function matches(CsvRecord $record, mixed $value): bool
+    /** @return Result<bool, \Throwable> */
+    public function matches(CsvRecord $record, mixed $value): Result
     {
-        $result = $this->getOperatorOverloader()->evaluate(
+        return $this->getOperatorOverloader()->evaluate(
             $record->get($this->column),
             $value,
             $this->operator
-        );
-
-        return (bool) ($result instanceof Result ? $result->unwrap() : $result);
+        )->map(fn (mixed $result): bool => (bool) $result);
     }
 
     private function getOperatorOverloader(): OperatorOverloader

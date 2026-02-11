@@ -29,13 +29,13 @@
     },
     "FalseValue": {
       "ignoreSourceCodeByRegex": [
-        ".*unwrapOr\\(false\\)->unwrapOr\\(false\\)\\)\\);.*",
+        ".*mapOr\\(false,.*=== false.*",
         ".*if \\(\\$stream === false\\).*",
       ],
     },
     "CastBool": {
       "ignoreSourceCodeByRegex": [
-        ".*return \\(bool\\) \\$this->getOperatorOverloader\\(\\)->evaluate\\(.*",
+        ".*\\(bool\\) \\$result.*",
       ],
     },
     "LogicalAnd": {
@@ -60,12 +60,12 @@
     },
     "GreaterThanOrEqualTo": {
       "ignoreSourceCodeByRegex": [
-        ".*return \\$value >= \\$minValue && \\$value < \\$maxValue;.*",
+        ".*return Ok\\(\\$value >= \\$minValue && \\$value < \\$maxValue\\);.*",
       ],
     },
     "LessThan": {
       "ignoreSourceCodeByRegex": [
-        ".*return \\$value >= \\$minValue && \\$value < \\$maxValue;.*",
+        ".*return Ok\\(\\$value >= \\$minValue && \\$value < \\$maxValue\\);.*",
       ],
     },
     "Finally_": {

@@ -77,7 +77,7 @@ final readonly class LookupResolver implements Resolver
                     return $filterResult;
                 }
 
-                if ($filterResult->unwrap() === false) {
+                if ($filterResult->mapOr(false, fn (bool $v) => $v) === false) {
                     continue;
                 }
 
@@ -133,10 +133,15 @@ final readonly class LookupResolver implements Resolver
     private function matchesAllFilters(CsvRecord $record, array $filters): Result
     {
         foreach ($filters as $filter) {
-            $resolveResult = $this->resolver->resolve($filter->value);
+            $result = $this->resolver->resolve($filter->value)
+                ->andThen(fn (Option $option) => $filter->matches($record, $option->mapOr(null, fn (mixed $v) => $v)));
 
-            if ($resolveResult->isErr() || ! $filter->matches($record, $resolveResult->unwrap()->unwrapOr(null))) {
-                return $resolveResult->isErr() ? $resolveResult : Ok(false);
+            if ($result->isErr()) {
+                return $result;
+            }
+
+            if ($result->mapOr(false, fn (bool $v) => $v) === false) {
+                return Ok(false);
             }
         }
 
