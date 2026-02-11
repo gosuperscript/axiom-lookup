@@ -17,22 +17,16 @@ final readonly class ValueFilter implements Filter
         public string|int $column,
         public Source $value,
         public string $operator = '==',
+        private OperatorOverloader $operatorOverloader = new OverloaderManager([new DefaultOverloader()]),
     ) {}
 
     /** @return Result<bool, \Throwable> */
     public function matches(CsvRecord $record, mixed $value): Result
     {
-        return $this->getOperatorOverloader()->evaluate(
+        return $this->operatorOverloader->evaluate(
             $record->get($this->column),
             $value,
             $this->operator
         )->map(fn (mixed $result): bool => (bool) $result);
-    }
-
-    private function getOperatorOverloader(): OperatorOverloader
-    {
-        return new OverloaderManager([
-            new DefaultOverloader(),
-        ]);
     }
 }
