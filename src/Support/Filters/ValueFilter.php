@@ -9,6 +9,7 @@ use Superscript\Axiom\Operators\DefaultOverloader;
 use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Operators\OverloaderManager;
 use Superscript\Axiom\Source;
+use Superscript\Monads\Result\Result;
 
 final readonly class ValueFilter implements Filter
 {
@@ -20,11 +21,13 @@ final readonly class ValueFilter implements Filter
 
     public function matches(CsvRecord $record, mixed $value): bool
     {
-        return (bool) $this->getOperatorOverloader()->evaluate(
+        $result = $this->getOperatorOverloader()->evaluate(
             $record->get($this->column),
             $value,
             $this->operator
         );
+
+        return (bool) ($result instanceof Result ? $result->unwrap() : $result);
     }
 
     private function getOperatorOverloader(): OperatorOverloader
