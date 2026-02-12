@@ -140,7 +140,7 @@ final readonly class LookupResolver implements Resolver
             ->resolve($filter->value)
             ->map(fn (Option $option) => new ResolvedFilter(
                 $filter,
-                $option->mapOr(null, fn (mixed $v) => $v),
+                $option->unwrapOr(null),
             )));
     }
 
