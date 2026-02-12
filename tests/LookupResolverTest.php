@@ -31,7 +31,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[CoversClass(ValueFilter::class)]
 #[CoversClass(RangeFilter::class)]
 #[UsesClass(CsvRecord::class)]
-#[UsesClass(ResolvedFilter::class)]
+#[CoversClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\Last::class)]
 #[UsesClass(Aggregates\Count::class)]
