@@ -17,6 +17,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Max;
 use Superscript\Axiom\Lookup\Support\Aggregates\Min;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
+use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Resolvers\Resolver;
 use Superscript\Axiom\Source;
@@ -25,6 +26,7 @@ use Superscript\Monads\Result\Err;
 use Superscript\Monads\Result\Result;
 use Throwable;
 
+use function Psl\Vec\map;
 use function Superscript\Monads\Option\None;
 use function Superscript\Monads\Option\Some;
 use function Superscript\Monads\Result\Ok;
@@ -67,39 +69,39 @@ final readonly class LookupResolver implements Resolver
             // Stream through records with memory-efficient processing
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
 
-            // Initialize aggregate-specific state using value objects
-            $aggregateState = $this->createAggregateState($source->aggregate);
+            // Resolve all filter values once before the row loop
+            return Result::collect($this->resolveFilters($source->filters))
+                ->andThen(function (array $resolvedFilters) use ($records, $source) {
+                    $aggregateState = $this->createAggregateState($source->aggregate);
 
-            foreach ($records as $record) {
-                /** @var array<string, mixed> $record */
-                $csvRecord = CsvRecord::from($record);
-                $filterResult = $this->matchesAllFilters($csvRecord, $source->filters);
+                    foreach ($records as $record) {
+                        /** @var array<string, mixed> $record */
+                        $csvRecord = CsvRecord::from($record);
+                        $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
 
-                if ($filterResult->isErr()) {
-                    return $filterResult;
-                }
+                        if ($filterResult->isErr()) {
+                            return $filterResult;
+                        }
 
-                if ($filterResult->mapOr(false, fn (bool $v) => $v) === false) {
-                    continue;
-                }
+                        if ($filterResult->mapOr(false, fn (bool $v) => $v) === false) {
+                            continue;
+                        }
 
-                // Process record immediately with immutable value object
-                $aggregateState = $aggregateState->process($csvRecord, $source->aggregateColumn);
+                        $aggregateState = $aggregateState->process($csvRecord, $source->aggregateColumn);
 
-                // Early exit optimization for 'first' aggregate
-                if ($aggregateState->canEarlyExit()) {
-                    break;
-                }
-            }
+                        if ($aggregateState->canEarlyExit()) {
+                            break;
+                        }
+                    }
 
-            // Finalize and extract result from aggregate state
-            $result = $aggregateState->finalize($source->columns);
+                    $result = $aggregateState->finalize($source->columns);
 
-            if ($result === null || (is_array($result) && empty($result))) {
-                return Ok(None());
-            }
+                    if ($result === null || (is_array($result) && empty($result))) {
+                        return Ok(None());
+                    }
 
-            return Ok(Some($result));
+                    return Ok(Some($result));
+                });
         } catch (Throwable $e) {
             return new Err($e);
         } finally {
@@ -130,13 +132,26 @@ final readonly class LookupResolver implements Resolver
 
     /**
      * @param  array<Filter>  $filters
+     * @return list<Result<ResolvedFilter, Throwable>>
+     */
+    private function resolveFilters(array $filters): array
+    {
+        return map($filters, fn (Filter $filter): Result => $this->resolver
+            ->resolve($filter->value)
+            ->map(fn (Option $option) => new ResolvedFilter(
+                $filter,
+                $option->unwrapOr(null),
+            )));
+    }
+
+    /**
+     * @param  array<ResolvedFilter>  $resolvedFilters
      * @return Result<bool, Throwable>
      */
-    private function matchesAllFilters(CsvRecord $record, array $filters): Result
+    private function matchesAllFilters(CsvRecord $record, array $resolvedFilters): Result
     {
-        foreach ($filters as $filter) {
-            $result = $this->resolver->resolve($filter->value)
-                ->andThen(fn (Option $option) => $filter->matches($record, $option->mapOr(null, fn (mixed $v) => $v), $this->operatorOverloader));
+        foreach ($resolvedFilters as $resolvedFilter) {
+            $result = $resolvedFilter->matches($record, $this->operatorOverloader);
 
             if ($result->isErr()) {
                 return $result;

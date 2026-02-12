@@ -16,6 +16,7 @@ use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
+use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Operators\DefaultOverloader;
 use Superscript\Axiom\Operators\OperatorOverloader;
@@ -30,6 +31,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[CoversClass(ValueFilter::class)]
 #[CoversClass(RangeFilter::class)]
 #[UsesClass(CsvRecord::class)]
+#[CoversClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\Last::class)]
 #[UsesClass(Aggregates\Count::class)]
