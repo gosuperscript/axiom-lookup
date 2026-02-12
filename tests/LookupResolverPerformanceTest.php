@@ -42,6 +42,7 @@ class LookupResolverPerformanceTest extends TestCase
         $adapter = new LocalFilesystemAdapter(sys_get_temp_dir());
         $this->filesystem = new Filesystem($adapter);
         $this->resolver->instance(FilesystemOperator::class, $this->filesystem);
+        $this->resolver->instance(OperatorOverloader::class, $this->overloader);
 
         // Store just the filenames (relative paths)
         $this->largeCsvFilename = 'large_test_' . uniqid() . '.csv';
@@ -60,7 +61,7 @@ class LookupResolverPerformanceTest extends TestCase
 
     private function filter(string|int $column, Source $value, string $operator = '=='): ValueFilter
     {
-        return new ValueFilter($column, $value, $this->overloader, $operator);
+        return new ValueFilter($column, $value, $operator);
     }
 
     #[Test]

@@ -17,6 +17,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Max;
 use Superscript\Axiom\Lookup\Support\Aggregates\Min;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
+use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Resolvers\Resolver;
 use Superscript\Axiom\Source;
 use Superscript\Monads\Option\Option;
@@ -36,6 +37,7 @@ final readonly class LookupResolver implements Resolver
     public function __construct(
         private FilesystemOperator $filesystem,
         private Resolver $resolver,
+        private OperatorOverloader $operatorOverloader,
     ) {}
 
     /**
@@ -134,7 +136,7 @@ final readonly class LookupResolver implements Resolver
     {
         foreach ($filters as $filter) {
             $result = $this->resolver->resolve($filter->value)
-                ->andThen(fn (Option $option) => $filter->matches($record, $option->mapOr(null, fn (mixed $v) => $v)));
+                ->andThen(fn (Option $option) => $filter->matches($record, $option->mapOr(null, fn (mixed $v) => $v), $this->operatorOverloader));
 
             if ($result->isErr()) {
                 return $result;
