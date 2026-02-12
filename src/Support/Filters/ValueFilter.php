@@ -14,14 +14,13 @@ final readonly class ValueFilter implements Filter
     public function __construct(
         public string|int $column,
         public Source $value,
-        private OperatorOverloader $operatorOverloader,
         public string $operator = '==',
     ) {}
 
     /** @return Result<bool, \Throwable> */
-    public function matches(CsvRecord $record, mixed $value): Result
+    public function matches(CsvRecord $record, mixed $value, OperatorOverloader $operatorOverloader): Result
     {
-        return $this->operatorOverloader->evaluate(
+        return $operatorOverloader->evaluate(
             $record->get($this->column),
             $value,
             $this->operator

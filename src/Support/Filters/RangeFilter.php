@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Source;
 use Superscript\Monads\Result\Result;
 
@@ -19,7 +20,7 @@ final readonly class RangeFilter implements Filter
     ) {}
 
     /** @return Result<bool, \Throwable> */
-    public function matches(CsvRecord $record, mixed $value): Result
+    public function matches(CsvRecord $record, mixed $value, OperatorOverloader $operatorOverloader): Result
     {
         if (! $record->has($this->minColumn) || ! $record->has($this->maxColumn)) {
             return Ok(false);

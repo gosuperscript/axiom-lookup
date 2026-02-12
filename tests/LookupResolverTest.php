@@ -56,6 +56,7 @@ class LookupResolverTest extends TestCase
         $adapter = new LocalFilesystemAdapter(__DIR__ . '/Fixtures');
         $this->filesystem = new Filesystem($adapter);
         $this->resolver->instance(FilesystemOperator::class, $this->filesystem);
+        $this->resolver->instance(OperatorOverloader::class, $this->overloader);
     }
 
     private function getFixturePath(string $filename): string
@@ -65,7 +66,7 @@ class LookupResolverTest extends TestCase
 
     private function filter(string|int $column, Source $value, string $operator = '=='): ValueFilter
     {
-        return new ValueFilter($column, $value, $this->overloader, $operator);
+        return new ValueFilter($column, $value, $operator);
     }
 
     #[Test]
@@ -745,7 +746,7 @@ class LookupResolverTest extends TestCase
         $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
         $record = CsvRecord::from(['max_price' => '200', 'name' => 'Product']); // min_price is missing
 
-        $result = $filter->matches($record, '100');
+        $result = $filter->matches($record, '100', $this->overloader);
 
         $this->assertTrue($result->isOk());
         $this->assertFalse($result->mapOr(true, fn (bool $v) => $v));
@@ -757,7 +758,7 @@ class LookupResolverTest extends TestCase
         $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
         $record = CsvRecord::from(['min_price' => '50', 'name' => 'Product']); // max_price is missing
 
-        $result = $filter->matches($record, '100');
+        $result = $filter->matches($record, '100', $this->overloader);
 
         $this->assertTrue($result->isOk());
         $this->assertFalse($result->mapOr(true, fn (bool $v) => $v));
@@ -774,10 +775,10 @@ class LookupResolverTest extends TestCase
         ]);
 
         // Should work with numeric values - [min, max) range
-        $this->assertTrue($filter->matches($record, '100')->mapOr(false, fn (bool $v) => $v));
-        $this->assertTrue($filter->matches($record, '50')->mapOr(false, fn (bool $v) => $v)); // Exactly at min (included)
-        $this->assertFalse($filter->matches($record, '150')->mapOr(true, fn (bool $v) => $v)); // At max (excluded)
-        $this->assertFalse($filter->matches($record, '200')->mapOr(true, fn (bool $v) => $v)); // Above max
+        $this->assertTrue($filter->matches($record, '100', $this->overloader)->mapOr(false, fn (bool $v) => $v));
+        $this->assertTrue($filter->matches($record, '50', $this->overloader)->mapOr(false, fn (bool $v) => $v)); // Exactly at min (included)
+        $this->assertFalse($filter->matches($record, '150', $this->overloader)->mapOr(true, fn (bool $v) => $v)); // At max (excluded)
+        $this->assertFalse($filter->matches($record, '200', $this->overloader)->mapOr(true, fn (bool $v) => $v)); // Above max
 
         // Test with non-numeric comparisons
         $record2 = CsvRecord::from([
@@ -786,8 +787,8 @@ class LookupResolverTest extends TestCase
             'name' => 'Product2'
         ]);
 
-        $this->assertTrue($filter->matches($record2, 'def')->mapOr(false, fn (bool $v) => $v)); // 'def' >= 'abc' && 'def' < 'xyz'
-        $this->assertFalse($filter->matches($record2, 'aaa')->mapOr(true, fn (bool $v) => $v)); // Below min
+        $this->assertTrue($filter->matches($record2, 'def', $this->overloader)->mapOr(false, fn (bool $v) => $v)); // 'def' >= 'abc' && 'def' < 'xyz'
+        $this->assertFalse($filter->matches($record2, 'aaa', $this->overloader)->mapOr(true, fn (bool $v) => $v)); // Below min
     }
 
     #[Test]
