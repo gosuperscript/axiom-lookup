@@ -67,13 +67,19 @@ final readonly class LookupResolver implements Resolver
             // Stream through records with memory-efficient processing
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
 
+            // Resolve all filter values once before the row loop
+            $resolvedFilterValues = $this->resolveFilterValues($source->filters);
+            if ($resolvedFilterValues->isErr()) {
+                return $resolvedFilterValues;
+            }
+
             // Initialize aggregate-specific state using value objects
             $aggregateState = $this->createAggregateState($source->aggregate);
 
             foreach ($records as $record) {
                 /** @var array<string, mixed> $record */
                 $csvRecord = CsvRecord::from($record);
-                $filterResult = $this->matchesAllFilters($csvRecord, $source->filters);
+                $filterResult = $this->matchesAllFilters($csvRecord, $source->filters, $resolvedFilterValues->unwrap());
 
                 if ($filterResult->isErr()) {
                     return $filterResult;
@@ -130,13 +136,34 @@ final readonly class LookupResolver implements Resolver
 
     /**
      * @param  array<Filter>  $filters
+     * @return Result<array<mixed>, Throwable>
+     */
+    private function resolveFilterValues(array $filters): Result
+    {
+        $values = [];
+
+        foreach ($filters as $i => $filter) {
+            $result = $this->resolver->resolve($filter->value);
+
+            if ($result->isErr()) {
+                return $result;
+            }
+
+            $values[$i] = $result->unwrap()->mapOr(null, fn (mixed $v) => $v);
+        }
+
+        return Ok($values);
+    }
+
+    /**
+     * @param  array<Filter>  $filters
+     * @param  array<mixed>  $resolvedValues
      * @return Result<bool, Throwable>
      */
-    private function matchesAllFilters(CsvRecord $record, array $filters): Result
+    private function matchesAllFilters(CsvRecord $record, array $filters, array $resolvedValues): Result
     {
-        foreach ($filters as $filter) {
-            $result = $this->resolver->resolve($filter->value)
-                ->andThen(fn (Option $option) => $filter->matches($record, $option->mapOr(null, fn (mixed $v) => $v), $this->operatorOverloader));
+        foreach ($filters as $i => $filter) {
+            $result = $filter->matches($record, $resolvedValues[$i], $this->operatorOverloader);
 
             if ($result->isErr()) {
                 return $result;
