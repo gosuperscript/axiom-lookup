@@ -19,6 +19,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Operators\OperatorOverloader;
+use Superscript\Axiom\ResolutionInspector;
 use Superscript\Axiom\Resolvers\Resolver;
 use Superscript\Axiom\Source;
 use Superscript\Monads\Option\Option;
@@ -40,6 +41,7 @@ final readonly class LookupResolver implements Resolver
         private FilesystemOperator $filesystem,
         private Resolver $resolver,
         private OperatorOverloader $operatorOverloader,
+        private ?ResolutionInspector $inspector = null,
     ) {}
 
     /**
@@ -48,8 +50,15 @@ final readonly class LookupResolver implements Resolver
      */
     public function resolve(Source $source): Result
     {
+        $this->inspector?->annotate('label', $source->path);
+        $this->inspector?->annotate('aggregate', $source->aggregate);
+
+        if ($source->columns !== []) {
+            $this->inspector?->annotate('columns', $source->columns);
+        }
+
         $stream = null;
-        
+
         try {
             // Read the CSV/TSV file from Flysystem as a stream
             $stream = $this->filesystem->readStream($source->path);
