@@ -17,6 +17,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Max;
 use Superscript\Axiom\Lookup\Support\Aggregates\Min;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
+use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Resolvers\Resolver;
 use Superscript\Axiom\Source;
@@ -68,9 +69,9 @@ final readonly class LookupResolver implements Resolver
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
 
             // Resolve all filter values once before the row loop
-            $resolvedFilterValues = $this->resolveFilterValues($source->filters);
-            if ($resolvedFilterValues->isErr()) {
-                return $resolvedFilterValues;
+            $resolvedFilters = $this->resolveFilters($source->filters);
+            if ($resolvedFilters->isErr()) {
+                return $resolvedFilters;
             }
 
             // Initialize aggregate-specific state using value objects
@@ -79,7 +80,7 @@ final readonly class LookupResolver implements Resolver
             foreach ($records as $record) {
                 /** @var array<string, mixed> $record */
                 $csvRecord = CsvRecord::from($record);
-                $filterResult = $this->matchesAllFilters($csvRecord, $source->filters, $resolvedFilterValues->unwrap());
+                $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters->unwrap());
 
                 if ($filterResult->isErr()) {
                     return $filterResult;
@@ -136,34 +137,36 @@ final readonly class LookupResolver implements Resolver
 
     /**
      * @param  array<Filter>  $filters
-     * @return Result<array<mixed>, Throwable>
+     * @return Result<array<ResolvedFilter>, Throwable>
      */
-    private function resolveFilterValues(array $filters): Result
+    private function resolveFilters(array $filters): Result
     {
-        $values = [];
+        $resolved = [];
 
-        foreach ($filters as $i => $filter) {
+        foreach ($filters as $filter) {
             $result = $this->resolver->resolve($filter->value);
 
             if ($result->isErr()) {
                 return $result;
             }
 
-            $values[$i] = $result->unwrap()->mapOr(null, fn (mixed $v) => $v);
+            $resolved[] = new ResolvedFilter(
+                $filter,
+                $result->unwrap()->mapOr(null, fn (mixed $v) => $v),
+            );
         }
 
-        return Ok($values);
+        return Ok($resolved);
     }
 
     /**
-     * @param  array<Filter>  $filters
-     * @param  array<mixed>  $resolvedValues
+     * @param  array<ResolvedFilter>  $resolvedFilters
      * @return Result<bool, Throwable>
      */
-    private function matchesAllFilters(CsvRecord $record, array $filters, array $resolvedValues): Result
+    private function matchesAllFilters(CsvRecord $record, array $resolvedFilters): Result
     {
-        foreach ($filters as $i => $filter) {
-            $result = $filter->matches($record, $resolvedValues[$i], $this->operatorOverloader);
+        foreach ($resolvedFilters as $resolvedFilter) {
+            $result = $resolvedFilter->matches($record, $this->operatorOverloader);
 
             if ($result->isErr()) {
                 return $result;
