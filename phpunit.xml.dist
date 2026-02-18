@@ -37,4 +37,7 @@
             <directory suffix=".php">./src</directory>
         </include>
     </source>
+    <extensions>
+        <bootstrap class="RobinIngelbrecht\PHPUnitCoverageTools\PhpUnitExtension" />
+    </extensions>
 </phpunit>
