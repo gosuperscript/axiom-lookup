@@ -7,15 +7,7 @@ namespace Superscript\Axiom\Lookup;
 use League\Csv\Reader;
 use League\Flysystem\FilesystemOperator;
 use RuntimeException;
-use Superscript\Axiom\Lookup\Support\Aggregates\Aggregate;
-use Superscript\Axiom\Lookup\Support\Aggregates\All;
-use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
-use Superscript\Axiom\Lookup\Support\Aggregates\Count;
-use Superscript\Axiom\Lookup\Support\Aggregates\First;
-use Superscript\Axiom\Lookup\Support\Aggregates\Last;
-use Superscript\Axiom\Lookup\Support\Aggregates\Max;
-use Superscript\Axiom\Lookup\Support\Aggregates\Min;
-use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
+use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Operators\OperatorOverloader;
@@ -81,7 +73,7 @@ final readonly class LookupResolver implements Resolver
             // Resolve all filter values once before the row loop
             return Result::collect($this->resolveFilters($source->filters))
                 ->andThen(function (array $resolvedFilters) use ($records, $source) {
-                    $aggregateState = $this->createAggregateState($source->aggregate);
+                    $aggregateState = AggregateFactory::for($source->aggregate);
 
                     foreach ($records as $record) {
                         /** @var array<string, mixed> $record */
@@ -119,24 +111,6 @@ final readonly class LookupResolver implements Resolver
                 fclose($stream);
             }
         }
-    }
-
-    /**
-     * Create appropriate aggregate state value object
-     */
-    private function createAggregateState(string $aggregate): Aggregate
-    {
-        return match ($aggregate) {
-            'first' => First::initial(),
-            'last' => Last::initial(),
-            'count' => Count::initial(),
-            'sum' => Sum::initial(),
-            'avg' => Avg::initial(),
-            'min' => Min::initial(),
-            'max' => Max::initial(),
-            'all' => All::initial(),
-            default => throw new RuntimeException("Unknown aggregate: {$aggregate}"),
-        };
     }
 
     /**
