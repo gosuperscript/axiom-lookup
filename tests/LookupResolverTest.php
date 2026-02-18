@@ -862,6 +862,20 @@ class LookupResolverTest extends TestCase
     }
 
     #[Test]
+    public function it_returns_error_when_filter_operator_is_unsupported(): void
+    {
+        $source = new LookupSource(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Alice'), '??unsupported??')],
+            columns: ['age'],
+        );
+
+        $result = $this->resolver->resolve($source);
+
+        $this->assertTrue($result->isErr());
+    }
+
+    #[Test]
     public function it_handles_false_return_from_readStream(): void
     {
         // Test the defensive check for when readStream returns false instead of throwing

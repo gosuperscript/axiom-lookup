@@ -107,12 +107,20 @@ class CsvRecordTest extends TestCase
     }
 
     #[Test]
+    public function it_extracts_single_element_from_array(): void
+    {
+        $record = CsvRecord::from(['name' => 'Alice', 'age' => 25]);
+
+        self::assertSame('Alice', $record->extract(['name']));
+    }
+
+    #[Test]
     public function it_extracts_multiple_columns(): void
     {
         $record = CsvRecord::from(['name' => 'Alice', 'age' => 25, 'city' => 'NYC']);
-        
+
         $result = $record->extract(['name', 'city']);
-        
+
         self::assertSame(['name' => 'Alice', 'city' => 'NYC'], $result);
     }
 
