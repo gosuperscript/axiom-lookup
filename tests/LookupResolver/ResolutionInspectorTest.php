@@ -30,6 +30,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(ValueFilter::class)]
 #[UsesClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
+#[UsesClass(Aggregates\AggregateFactory::class)]
 class ResolutionInspectorTest extends TestCase
 {
     private LookupResolver $lookupResolver;
