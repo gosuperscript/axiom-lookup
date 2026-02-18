@@ -40,6 +40,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(Aggregates\Min::class)]
 #[UsesClass(Aggregates\Max::class)]
 #[UsesClass(Aggregates\All::class)]
+#[UsesClass(Aggregates\AggregateFactory::class)]
 class LookupResolverTest extends TestCase
 {
     private DelegatingResolver $resolver;
