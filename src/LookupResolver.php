@@ -68,7 +68,7 @@ final readonly class LookupResolver implements Resolver
             }
 
             // Create CSV reader from stream
-            $reader = Reader::createFromStream($stream);
+            $reader = Reader::from($stream);
             $reader->setDelimiter($source->delimiter);
 
             if ($source->hasHeader) {
