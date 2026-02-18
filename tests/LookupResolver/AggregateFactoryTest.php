@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -30,52 +31,23 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 #[UsesClass(All::class)]
 class AggregateFactoryTest extends TestCase
 {
-    #[Test]
-    public function it_creates_first_aggregate(): void
+    public static function aggregates(): iterable
     {
-        self::assertInstanceOf(First::class, AggregateFactory::for('first'));
+        yield 'first' => ['first', First::class];
+        yield 'last' => ['last', Last::class];
+        yield 'count' => ['count', Count::class];
+        yield 'sum' => ['sum', Sum::class];
+        yield 'avg' => ['avg', Avg::class];
+        yield 'min' => ['min', Min::class];
+        yield 'max' => ['max', Max::class];
+        yield 'all' => ['all', All::class];
     }
 
     #[Test]
-    public function it_creates_last_aggregate(): void
+    #[DataProvider('aggregates')]
+    public function it_creates_aggregate(string $name, string $class): void
     {
-        self::assertInstanceOf(Last::class, AggregateFactory::for('last'));
-    }
-
-    #[Test]
-    public function it_creates_count_aggregate(): void
-    {
-        self::assertInstanceOf(Count::class, AggregateFactory::for('count'));
-    }
-
-    #[Test]
-    public function it_creates_sum_aggregate(): void
-    {
-        self::assertInstanceOf(Sum::class, AggregateFactory::for('sum'));
-    }
-
-    #[Test]
-    public function it_creates_avg_aggregate(): void
-    {
-        self::assertInstanceOf(Avg::class, AggregateFactory::for('avg'));
-    }
-
-    #[Test]
-    public function it_creates_min_aggregate(): void
-    {
-        self::assertInstanceOf(Min::class, AggregateFactory::for('min'));
-    }
-
-    #[Test]
-    public function it_creates_max_aggregate(): void
-    {
-        self::assertInstanceOf(Max::class, AggregateFactory::for('max'));
-    }
-
-    #[Test]
-    public function it_creates_all_aggregate(): void
-    {
-        self::assertInstanceOf(All::class, AggregateFactory::for('all'));
+        self::assertInstanceOf($class, AggregateFactory::for($name));
     }
 
     #[Test]
