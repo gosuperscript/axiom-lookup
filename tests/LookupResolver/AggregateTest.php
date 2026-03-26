@@ -7,10 +7,9 @@ namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
-use Brick\Math\BigDecimal;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\LookupException;
 use Superscript\Axiom\Lookup\Support\Aggregates\All;
 use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
 use Superscript\Axiom\Lookup\Support\Aggregates\Count;
@@ -31,6 +30,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 #[CoversClass(All::class)]
 #[CoversClass(Sole::class)]
 #[UsesClass(CsvRecord::class)]
+#[UsesClass(LookupException::class)]
 class AggregateTest extends TestCase
 {
     #[Test]
@@ -145,7 +145,7 @@ class AggregateTest extends TestCase
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
         $state = $state->process($record3, 'price');
-        
+
         self::assertSame(35.75, $state->finalize([]));
     }
 
@@ -155,7 +155,7 @@ class AggregateTest extends TestCase
         $state = Sum::initial();
         $record = CsvRecord::from(['price' => 'invalid']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'price');
     }
@@ -166,7 +166,7 @@ class AggregateTest extends TestCase
         $state = Sum::initial();
         $record = CsvRecord::from(['price' => null]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'price');
     }
@@ -200,7 +200,7 @@ class AggregateTest extends TestCase
         $state = Avg::initial();
         $record = CsvRecord::from(['score' => 'invalid']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'score');
     }
@@ -211,7 +211,7 @@ class AggregateTest extends TestCase
         $state = Avg::initial();
         $record = CsvRecord::from(['score' => null]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'score');
     }
@@ -246,7 +246,7 @@ class AggregateTest extends TestCase
         $state = Min::initial();
         $record = CsvRecord::from(['price' => 'invalid', 'name' => 'Bob']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'price');
     }
@@ -257,7 +257,7 @@ class AggregateTest extends TestCase
         $state = Min::initial();
         $record = CsvRecord::from(['price' => null, 'name' => 'Bob']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'price');
     }
@@ -324,7 +324,7 @@ class AggregateTest extends TestCase
         $state = Max::initial();
         $record = CsvRecord::from(['price' => 'invalid', 'name' => 'Bob']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'price');
     }
@@ -335,7 +335,7 @@ class AggregateTest extends TestCase
         $state = Max::initial();
         $record = CsvRecord::from(['price' => null, 'name' => 'Bob']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, 'price');
     }
@@ -432,8 +432,8 @@ class AggregateTest extends TestCase
     {
         $state = Sole::initial();
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Expected exactly one record, but none were found.');
+        $this->expectException(LookupException::class);
+        $this->expectExceptionMessage('Expected exactly 1 record(s), 0 record(s) found.');
 
         $state->finalize('name');
     }
@@ -448,8 +448,8 @@ class AggregateTest extends TestCase
         $state = $state->process($record1, null);
         $state = $state->process($record2, null);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Expected exactly one record, but 2 were found.');
+        $this->expectException(LookupException::class);
+        $this->expectExceptionMessage('Expected exactly 1 record(s), 2 record(s) found.');
 
         $state->finalize('name');
     }
@@ -475,7 +475,7 @@ class AggregateTest extends TestCase
         $state = Sum::initial();
         $record = CsvRecord::from(['price' => '10']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, null);
     }
@@ -486,7 +486,7 @@ class AggregateTest extends TestCase
         $state = Avg::initial();
         $record = CsvRecord::from(['score' => '10']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, null);
     }
@@ -497,7 +497,7 @@ class AggregateTest extends TestCase
         $state = Min::initial();
         $record = CsvRecord::from(['price' => '10']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, null);
     }
@@ -508,7 +508,7 @@ class AggregateTest extends TestCase
         $state = Max::initial();
         $record = CsvRecord::from(['price' => '10']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LookupException::class);
 
         $state->process($record, null);
     }

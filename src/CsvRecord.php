@@ -45,7 +45,7 @@ final readonly class CsvRecord
     /**
      * Get a value as a BigDecimal, or null if not present/not numeric
      */
-    public function getNumeric(string|int|float $column): ?BigDecimal
+    public function getNumeric(string|int $column): ?BigDecimal
     {
         $value = $this->data[$column] ?? null;
 

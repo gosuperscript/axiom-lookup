@@ -6,8 +6,8 @@ namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
-use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\LookupException;
 
 final readonly class Avg implements Aggregate
 {
@@ -24,13 +24,13 @@ final readonly class Avg implements Aggregate
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
         if ($aggregateColumn === null) {
-            throw new RuntimeException("aggregateColumn is required when using 'avg' aggregate");
+            throw LookupException::undefinedAggregateColumn('avg');
         }
 
         $value = $record->getNumeric($aggregateColumn);
 
         if ($value === null) {
-            throw new RuntimeException("Non-numeric value encountered in column '{$aggregateColumn}' when using 'avg' aggregate");
+            throw LookupException::nonNumericValue($aggregateColumn, 'avg');
         }
 
         return new self($this->sum->plus($value), $this->count + 1);

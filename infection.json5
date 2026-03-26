@@ -78,6 +78,11 @@
         "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
       ],
     },
+    "PublicVisibility": {
+      "ignore": [
+        "Superscript\\Axiom\\Lookup\\LookupException",
+      ],
+    },
   },
   "logs": {
     "text": "build/infection.log",

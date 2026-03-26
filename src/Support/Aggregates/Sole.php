@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
-use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\LookupException;
 
 final readonly class Sole implements Aggregate
 {
@@ -22,18 +22,18 @@ final readonly class Sole implements Aggregate
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
         return new self(
-            $this->record ?? $record,
+            $this->count === 0 ? $record : $this->record,
             $this->count + 1,
         );
     }
 
     public function finalize(array|string|int $columns): mixed
     {
-        return match (true) {
-            $this->count === 0 => throw new RuntimeException('Expected exactly one record, but none were found.'),
-            $this->count > 1 => throw new RuntimeException("Expected exactly one record, but {$this->count} were found."),
-            default => $this->record?->extract($columns),
-        };
+        if ($this->count !== 1 || $this->record === null) {
+            throw LookupException::unexpectedRowCount(1, $this->count);
+        }
+
+        return $this->record->extract($columns);
     }
 
     public function canEarlyExit(): bool

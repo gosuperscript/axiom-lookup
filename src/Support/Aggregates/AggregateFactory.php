@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
-use RuntimeException;
+use Superscript\Axiom\Lookup\LookupException;
 
 final readonly class AggregateFactory
 {
@@ -19,7 +19,7 @@ final readonly class AggregateFactory
             'min' => Min::initial(),
             'max' => Max::initial(),
             'all' => All::initial(),
-            default => throw new RuntimeException("Unknown aggregate: $aggregate"),
+            default => throw LookupException::unknownAggregate($aggregate),
         };
     }
 }
