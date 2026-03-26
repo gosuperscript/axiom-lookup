@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Superscript\Axiom\Lookup\LookupException;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Aggregates\All;
 use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
@@ -29,6 +30,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 #[UsesClass(Min::class)]
 #[UsesClass(Max::class)]
 #[UsesClass(All::class)]
+#[UsesClass(LookupException::class)]
 class AggregateFactoryTest extends TestCase
 {
     public static function aggregates(): iterable

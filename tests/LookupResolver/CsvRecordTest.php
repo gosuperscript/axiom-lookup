@@ -6,6 +6,7 @@ namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
+use Brick\Math\BigDecimal;
 use PHPUnit\Framework\TestCase;
 use Superscript\Axiom\Lookup\CsvRecord;
 
@@ -49,9 +50,11 @@ class CsvRecordTest extends TestCase
     public function it_gets_numeric_value(): void
     {
         $record = CsvRecord::from(['price' => '99.99', 'count' => 5]);
-        
-        self::assertSame(99.99, $record->getNumeric('price'));
-        self::assertSame(5.0, $record->getNumeric('count'));
+
+        self::assertInstanceOf(BigDecimal::class, $record->getNumeric('price'));
+        self::assertTrue(BigDecimal::of('99.99')->isEqualTo($record->getNumeric('price')));
+        self::assertInstanceOf(BigDecimal::class, $record->getNumeric('count'));
+        self::assertTrue(BigDecimal::of('5')->isEqualTo($record->getNumeric('count')));
     }
 
     #[Test]
@@ -166,7 +169,8 @@ class CsvRecordTest extends TestCase
         $record = CsvRecord::from([0 => 'Alice', 1 => 25]);
         
         self::assertSame('Alice', $record->getString(0));
-        self::assertSame(25.0, $record->getNumeric(1));
+        self::assertInstanceOf(BigDecimal::class, $record->getNumeric(1));
+        self::assertTrue(BigDecimal::of('25')->isEqualTo($record->getNumeric(1)));
         self::assertTrue($record->has(0));
         self::assertSame('Alice', $record->get(0));
     }

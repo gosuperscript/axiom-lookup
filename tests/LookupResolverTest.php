@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Lookup\LookupException;
 use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\CsvRecord;
@@ -41,6 +42,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(Aggregates\Max::class)]
 #[UsesClass(Aggregates\All::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
+#[UsesClass(LookupException::class)]
 class LookupResolverTest extends TestCase
 {
     private DelegatingResolver $resolver;

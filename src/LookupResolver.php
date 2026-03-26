@@ -6,7 +6,6 @@ namespace Superscript\Axiom\Lookup;
 
 use League\Csv\Reader;
 use League\Flysystem\FilesystemOperator;
-use RuntimeException;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
@@ -56,7 +55,7 @@ final readonly class LookupResolver implements Resolver
             $stream = $this->filesystem->readStream($source->path);
             
             if ($stream === false) {
-                throw new RuntimeException("Could not open file: {$source->path}");
+                throw LookupException::fileNotFound($source->path);
             }
 
             // Create CSV reader from stream
