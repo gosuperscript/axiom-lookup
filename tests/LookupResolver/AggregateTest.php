@@ -7,6 +7,7 @@ namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
+use Brick\Math\BigDecimal;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
@@ -140,7 +141,7 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['price' => '10.5']);
         $record2 = CsvRecord::from(['price' => '20.25']);
         $record3 = CsvRecord::from(['price' => '5']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
         $state = $state->process($record3, 'price');
@@ -149,25 +150,32 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
-    public function sum_aggregate_ignores_non_numeric(): void
+    public function sum_aggregate_throws_on_non_numeric(): void
     {
         $state = Sum::initial();
-        $record1 = CsvRecord::from(['price' => '10']);
-        $record2 = CsvRecord::from(['price' => 'invalid']);
-        $record3 = CsvRecord::from(['price' => '5']);
-        
-        $state = $state->process($record1, 'price');
-        $state = $state->process($record2, 'price');
-        $state = $state->process($record3, 'price');
-        
-        self::assertSame(15.0, $state->finalize([]));
+        $record = CsvRecord::from(['price' => 'invalid']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'price');
+    }
+
+    #[Test]
+    public function sum_aggregate_throws_on_null_value(): void
+    {
+        $state = Sum::initial();
+        $record = CsvRecord::from(['price' => null]);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'price');
     }
 
     #[Test]
     public function sum_aggregate_returns_null_when_no_values(): void
     {
         $state = Sum::initial();
-        
+
         self::assertNull($state->finalize([]));
     }
 
@@ -178,34 +186,41 @@ class AggregateTest extends TestCase
         $record1 = CsvRecord::from(['score' => '10']);
         $record2 = CsvRecord::from(['score' => '20']);
         $record3 = CsvRecord::from(['score' => '30']);
-        
+
         $state = $state->process($record1, 'score');
         $state = $state->process($record2, 'score');
         $state = $state->process($record3, 'score');
-        
+
         self::assertSame(20.0, $state->finalize([]));
     }
 
     #[Test]
-    public function avg_aggregate_ignores_non_numeric(): void
+    public function avg_aggregate_throws_on_non_numeric(): void
     {
         $state = Avg::initial();
-        $record1 = CsvRecord::from(['score' => '10']);
-        $record2 = CsvRecord::from(['score' => 'invalid']);
-        $record3 = CsvRecord::from(['score' => '30']);
-        
-        $state = $state->process($record1, 'score');
-        $state = $state->process($record2, 'score');
-        $state = $state->process($record3, 'score');
-        
-        self::assertSame(20.0, $state->finalize([]));
+        $record = CsvRecord::from(['score' => 'invalid']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'score');
+    }
+
+    #[Test]
+    public function avg_aggregate_throws_on_null_value(): void
+    {
+        $state = Avg::initial();
+        $record = CsvRecord::from(['score' => null]);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'score');
     }
 
     #[Test]
     public function avg_aggregate_returns_null_when_no_values(): void
     {
         $state = Avg::initial();
-        
+
         self::assertNull($state->finalize([]));
     }
 
@@ -226,24 +241,32 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
-    public function min_aggregate_ignores_non_numeric(): void
+    public function min_aggregate_throws_on_non_numeric(): void
     {
         $state = Min::initial();
-        $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
-        $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
-        
-        $state = $state->process($record1, 'price');
-        $state = $state->process($record2, 'price');
-        
-        $result = $state->finalize(['price', 'name']);
-        self::assertSame(['price' => '10', 'name' => 'Bob'], $result);
+        $record = CsvRecord::from(['price' => 'invalid', 'name' => 'Bob']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'price');
+    }
+
+    #[Test]
+    public function min_aggregate_throws_on_null_value(): void
+    {
+        $state = Min::initial();
+        $record = CsvRecord::from(['price' => null, 'name' => 'Bob']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'price');
     }
 
     #[Test]
     public function min_aggregate_returns_null_when_no_records(): void
     {
         $state = Min::initial();
-        
+
         self::assertNull($state->finalize('price'));
     }
 
@@ -253,29 +276,13 @@ class AggregateTest extends TestCase
         $state = Min::initial();
         $record1 = CsvRecord::from(['price' => '10', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '10', 'name' => 'Bob']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
-        
+
         $result = $state->finalize(['price', 'name']);
         // Should keep the first occurrence
         self::assertSame(['price' => '10', 'name' => 'Alice'], $result);
-    }
-
-    #[Test]
-    public function min_aggregate_ignores_null_values(): void
-    {
-        $state = Min::initial();
-        $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
-        $record2 = CsvRecord::from(['price' => null, 'name' => 'Bob']);
-        $record3 = CsvRecord::from(['price' => '10', 'name' => 'Charlie']);
-        
-        $state = $state->process($record1, 'price');
-        $state = $state->process($record2, 'price');
-        $state = $state->process($record3, 'price');
-        
-        $result = $state->finalize(['price', 'name']);
-        self::assertSame(['price' => '10', 'name' => 'Charlie'], $result);
     }
 
     #[Test]
@@ -312,24 +319,32 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
-    public function max_aggregate_ignores_non_numeric(): void
+    public function max_aggregate_throws_on_non_numeric(): void
     {
         $state = Max::initial();
-        $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
-        $record2 = CsvRecord::from(['price' => '30', 'name' => 'Bob']);
-        
-        $state = $state->process($record1, 'price');
-        $state = $state->process($record2, 'price');
-        
-        $result = $state->finalize(['price', 'name']);
-        self::assertSame(['price' => '30', 'name' => 'Bob'], $result);
+        $record = CsvRecord::from(['price' => 'invalid', 'name' => 'Bob']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'price');
+    }
+
+    #[Test]
+    public function max_aggregate_throws_on_null_value(): void
+    {
+        $state = Max::initial();
+        $record = CsvRecord::from(['price' => null, 'name' => 'Bob']);
+
+        $this->expectException(RuntimeException::class);
+
+        $state->process($record, 'price');
     }
 
     #[Test]
     public function max_aggregate_returns_null_when_no_records(): void
     {
         $state = Max::initial();
-        
+
         self::assertNull($state->finalize('price'));
     }
 
@@ -339,29 +354,13 @@ class AggregateTest extends TestCase
         $state = Max::initial();
         $record1 = CsvRecord::from(['price' => '30', 'name' => 'Alice']);
         $record2 = CsvRecord::from(['price' => '30', 'name' => 'Bob']);
-        
+
         $state = $state->process($record1, 'price');
         $state = $state->process($record2, 'price');
-        
+
         $result = $state->finalize(['price', 'name']);
         // Should keep the first occurrence
         self::assertSame(['price' => '30', 'name' => 'Alice'], $result);
-    }
-
-    #[Test]
-    public function max_aggregate_ignores_null_values(): void
-    {
-        $state = Max::initial();
-        $record1 = CsvRecord::from(['price' => '25', 'name' => 'Alice']);
-        $record2 = CsvRecord::from(['price' => null, 'name' => 'Bob']);
-        $record3 = CsvRecord::from(['price' => '30', 'name' => 'Charlie']);
-        
-        $state = $state->process($record1, 'price');
-        $state = $state->process($record2, 'price');
-        $state = $state->process($record3, 'price');
-        
-        $result = $state->finalize(['price', 'name']);
-        self::assertSame(['price' => '30', 'name' => 'Charlie'], $result);
     }
 
     #[Test]

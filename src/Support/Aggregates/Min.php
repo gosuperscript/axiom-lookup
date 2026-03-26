@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
+use Brick\Math\BigDecimal;
 use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
 
 final readonly class Min implements Aggregate
 {
-    /**
-     * @param mixed $minValue
-     */
     private function __construct(
         private ?CsvRecord $minRecord,
-        private mixed $minValue,
+        private ?BigDecimal $minValue,
     ) {}
 
     public static function initial(): self
@@ -28,12 +26,16 @@ final readonly class Min implements Aggregate
             throw new RuntimeException("aggregateColumn is required when using 'min' aggregate");
         }
 
-        $value = $record->get($aggregateColumn);
-        
-        if ($value !== null && ($this->minValue === null || $value < $this->minValue)) {
+        $value = $record->getNumeric($aggregateColumn);
+
+        if ($value === null) {
+            throw new RuntimeException("Non-numeric value encountered in column '{$aggregateColumn}' when using 'min' aggregate");
+        }
+
+        if ($this->minValue === null || $value->isLessThan($this->minValue)) {
             return new self($record, $value);
         }
-        
+
         return $this;
     }
 

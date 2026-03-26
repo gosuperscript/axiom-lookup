@@ -4,19 +4,21 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
 
 final readonly class Avg implements Aggregate
 {
     private function __construct(
-        private float $sum,
+        private BigDecimal $sum,
         private int $count,
     ) {}
 
     public static function initial(): self
     {
-        return new self(0.0, 0);
+        return new self(BigDecimal::zero(), 0);
     }
 
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
@@ -26,11 +28,12 @@ final readonly class Avg implements Aggregate
         }
 
         $value = $record->getNumeric($aggregateColumn);
-        if ($value !== null) {
-            return new self($this->sum + $value, $this->count + 1);
+
+        if ($value === null) {
+            throw new RuntimeException("Non-numeric value encountered in column '{$aggregateColumn}' when using 'avg' aggregate");
         }
-        
-        return $this;
+
+        return new self($this->sum->plus($value), $this->count + 1);
     }
 
     public function finalize(array|string|int $columns): mixed
@@ -38,8 +41,10 @@ final readonly class Avg implements Aggregate
         if ($this->count === 0) {
             return null;
         }
-        
-        return $this->sum / $this->count;
+
+        return $this->sum->dividedBy($this->count, roundingMode: RoundingMode::HALF_UP)
+            ->stripTrailingZeros()
+            ->toFloat();
     }
 
     public function canEarlyExit(): bool

@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
+use Brick\Math\BigDecimal;
 use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
 
 final readonly class Max implements Aggregate
 {
-    /**
-     * @param mixed $maxValue
-     */
     private function __construct(
         private ?CsvRecord $maxRecord,
-        private mixed $maxValue,
+        private ?BigDecimal $maxValue,
     ) {}
 
     public static function initial(): self
@@ -28,12 +26,16 @@ final readonly class Max implements Aggregate
             throw new RuntimeException("aggregateColumn is required when using 'max' aggregate");
         }
 
-        $value = $record->get($aggregateColumn);
-        
-        if ($value !== null && ($this->maxValue === null || $value > $this->maxValue)) {
+        $value = $record->getNumeric($aggregateColumn);
+
+        if ($value === null) {
+            throw new RuntimeException("Non-numeric value encountered in column '{$aggregateColumn}' when using 'max' aggregate");
+        }
+
+        if ($this->maxValue === null || $value->isGreaterThan($this->maxValue)) {
             return new self($record, $value);
         }
-        
+
         return $this;
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
+use Brick\Math\BigDecimal;
+
 use function Psl\Iter\first;
 
 /**
@@ -12,14 +14,14 @@ use function Psl\Iter\first;
 final readonly class CsvRecord
 {
     /**
-     * @param array<string|int, mixed> $data
+     * @param  array<string|int, mixed>  $data
      */
     private function __construct(
         private array $data,
     ) {}
 
     /**
-     * @param array<string|int, mixed> $data
+     * @param  array<string|int, mixed>  $data
      */
     public static function from(array $data): self
     {
@@ -32,26 +34,26 @@ final readonly class CsvRecord
     public function getString(string|int $column): ?string
     {
         $value = $this->data[$column] ?? null;
-        
+
         if ($value === null) {
             return null;
         }
-        
+
         return is_scalar($value) ? (string) $value : null;
     }
 
     /**
-     * Get a value as a float, or null if not present/not numeric
+     * Get a value as a BigDecimal, or null if not present/not numeric
      */
-    public function getNumeric(string|int $column): ?float
+    public function getNumeric(string|int|float $column): ?BigDecimal
     {
         $value = $this->data[$column] ?? null;
-        
-        if ($value === null || !is_numeric($value)) {
+
+        if ($value === null || ! is_numeric($value)) {
             return null;
         }
-        
-        return (float) $value;
+
+        return BigDecimal::of($value);
     }
 
     /**
@@ -72,14 +74,15 @@ final readonly class CsvRecord
 
     /**
      * Extract specific columns
-     * @param array<string|int>|string|int $columns
+     *
+     * @param  array<string|int>|string|int  $columns
      */
     public function extract(array|string|int $columns): mixed
     {
         if (empty($columns)) {
             return $this->data;
         }
-        
+
         if (is_string($columns) || is_int($columns)) {
             return $this->data[$columns] ?? null;
         }
@@ -87,17 +90,18 @@ final readonly class CsvRecord
         if (count($columns) === 1) {
             return $this->data[first($columns)] ?? null;
         }
-        
+
         $result = [];
         foreach ($columns as $column) {
             $result[$column] = $this->data[$column] ?? null;
         }
-        
+
         return $result;
     }
 
     /**
      * Get all data
+     *
      * @return array<string|int, mixed>
      */
     public function toArray(): array
