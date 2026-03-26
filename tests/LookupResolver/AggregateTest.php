@@ -17,6 +17,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\First;
 use Superscript\Axiom\Lookup\Support\Aggregates\Last;
 use Superscript\Axiom\Lookup\Support\Aggregates\Max;
 use Superscript\Axiom\Lookup\Support\Aggregates\Min;
+use Superscript\Axiom\Lookup\Support\Aggregates\Sole;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 
 #[CoversClass(First::class)]
@@ -27,6 +28,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 #[CoversClass(Min::class)]
 #[CoversClass(Max::class)]
 #[CoversClass(All::class)]
+#[CoversClass(Sole::class)]
 #[UsesClass(CsvRecord::class)]
 class AggregateTest extends TestCase
 {
@@ -413,6 +415,59 @@ class AggregateTest extends TestCase
     public function all_aggregate_cannot_early_exit(): void
     {
         self::assertFalse(All::initial()->canEarlyExit());
+    }
+
+    #[Test]
+    public function sole_aggregate_returns_single_record(): void
+    {
+        $state = Sole::initial();
+        $record = CsvRecord::from(['name' => 'Alice']);
+
+        $state = $state->process($record, null);
+
+        self::assertSame('Alice', $state->finalize('name'));
+    }
+
+    #[Test]
+    public function sole_aggregate_throws_when_no_records(): void
+    {
+        $state = Sole::initial();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Expected exactly one record, but none were found.');
+
+        $state->finalize('name');
+    }
+
+    #[Test]
+    public function sole_aggregate_throws_when_multiple_records(): void
+    {
+        $state = Sole::initial();
+        $record1 = CsvRecord::from(['name' => 'Alice']);
+        $record2 = CsvRecord::from(['name' => 'Bob']);
+
+        $state = $state->process($record1, null);
+        $state = $state->process($record2, null);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Expected exactly one record, but 2 were found.');
+
+        $state->finalize('name');
+    }
+
+    #[Test]
+    public function sole_aggregate_can_early_exit_after_second_record(): void
+    {
+        $state = Sole::initial();
+        $record = CsvRecord::from(['name' => 'Alice']);
+
+        self::assertFalse($state->canEarlyExit());
+
+        $state = $state->process($record, null);
+        self::assertFalse($state->canEarlyExit());
+
+        $state = $state->process($record, null);
+        self::assertTrue($state->canEarlyExit());
     }
 
     #[Test]
