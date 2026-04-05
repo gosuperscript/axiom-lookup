@@ -43,7 +43,7 @@ final class LookupDslPlugin implements DslPlugin
                 }
             }
 
-            return new LookupSource(filePath: $path, filters: $filters, columns: [$column]);
+            return new LookupSource(path: $path, filters: $filters, columns: [$column]);
         });
     }
 
