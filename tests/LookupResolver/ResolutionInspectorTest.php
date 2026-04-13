@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
@@ -54,8 +55,12 @@ class ResolutionInspectorTest extends TestCase
             $filesystem,
             $delegating,
             $overloader,
-            $this->inspector,
         );
+    }
+
+    private function context(): Context
+    {
+        return new Context(inspector: $this->inspector);
     }
 
     #[Test]
@@ -67,7 +72,7 @@ class ResolutionInspectorTest extends TestCase
             columns: ['age'],
         );
 
-        $this->lookupResolver->resolve($source);
+        $this->lookupResolver->resolve($source, $this->context());
 
         $this->assertSame('users.csv', $this->inspector->annotations['label']);
     }
@@ -82,7 +87,7 @@ class ResolutionInspectorTest extends TestCase
             aggregate: 'first',
         );
 
-        $this->lookupResolver->resolve($source);
+        $this->lookupResolver->resolve($source, $this->context());
 
         $this->assertSame('first', $this->inspector->annotations['aggregate']);
     }
@@ -96,7 +101,7 @@ class ResolutionInspectorTest extends TestCase
             columns: ['age', 'city'],
         );
 
-        $this->lookupResolver->resolve($source);
+        $this->lookupResolver->resolve($source, $this->context());
 
         $this->assertSame(['age', 'city'], $this->inspector->annotations['columns']);
     }
@@ -110,7 +115,7 @@ class ResolutionInspectorTest extends TestCase
             columns: [],
         );
 
-        $this->lookupResolver->resolve($source);
+        $this->lookupResolver->resolve($source, $this->context());
 
         $this->assertArrayNotHasKey('columns', $this->inspector->annotations);
     }
@@ -139,7 +144,7 @@ class ResolutionInspectorTest extends TestCase
             columns: ['age'],
         );
 
-        $result = $resolver->resolve($source);
+        $result = $resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isOk());
         $this->assertSame('30', $result->unwrap()->unwrap());

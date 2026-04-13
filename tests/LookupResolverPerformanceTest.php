@@ -10,6 +10,7 @@ use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
@@ -80,7 +81,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregate: 'count',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         // Measure memory after
         $memoryAfter = memory_get_usage();
@@ -114,7 +115,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregateColumn: 'price',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         // Measure memory after
         $memoryAfter = memory_get_usage();
@@ -147,7 +148,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregate: 'first',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $firstAggregateTime = microtime(true) - $startTime;
         
@@ -164,7 +165,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregate: 'count',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $countAggregateTime = microtime(true) - $startTime;
         
@@ -194,7 +195,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregateColumn: 'price',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $memoryAfter = memory_get_usage();
         $memoryUsed = $memoryAfter - $memoryBefore;
@@ -221,7 +222,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregateColumn: 'price',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $memoryAfter = memory_get_usage();
         $memoryUsed = $memoryAfter - $memoryBefore;
@@ -252,7 +253,7 @@ class LookupResolverPerformanceTest extends TestCase
             aggregateColumn: 'price',
         );
         
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $memoryAfter = memory_get_usage();
         $memoryUsed = $memoryAfter - $memoryBefore;
@@ -287,7 +288,7 @@ class LookupResolverPerformanceTest extends TestCase
                 aggregate: 'count',
             );
             
-            $result = $this->resolver->resolve($source);
+            $result = $this->resolver->resolve($source, new Context());
             
             $executionTime = microtime(true) - $startTime;
             $memoryUsed = memory_get_usage() - $memoryBefore;

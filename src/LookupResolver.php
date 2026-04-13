@@ -7,11 +7,11 @@ namespace Superscript\Axiom\Lookup;
 use League\Csv\Reader;
 use League\Flysystem\FilesystemOperator;
 use RuntimeException;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Operators\OperatorOverloader;
-use Superscript\Axiom\ResolutionInspector;
 use Superscript\Axiom\Resolvers\Resolver;
 use Superscript\Axiom\Source;
 use Superscript\Monads\Option\Option;
@@ -33,20 +33,18 @@ final readonly class LookupResolver implements Resolver
         private FilesystemOperator $filesystem,
         private Resolver $resolver,
         private OperatorOverloader $operatorOverloader,
-        private ?ResolutionInspector $inspector = null,
     ) {}
 
     /**
      * @param  LookupSource  $source
      * @return Result<Option<mixed>, Throwable>
      */
-    public function resolve(Source $source): Result
+    public function resolve(Source $source, Context $context): Result
     {
-        $this->inspector?->annotate('label', $source->path);
-        $this->inspector?->annotate('aggregate', $source->aggregate);
+        $context->inspector?->annotate('aggregate', $source->aggregate);
 
         if ($source->columns !== []) {
-            $this->inspector?->annotate('columns', $source->columns);
+            $context->inspector?->annotate('columns', $source->columns);
         }
 
         $stream = null;
@@ -71,7 +69,7 @@ final readonly class LookupResolver implements Resolver
             $records = $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
 
             // Resolve all filter values once before the row loop
-            return Result::collect($this->resolveFilters($source->filters))
+            $result = Result::collect($this->resolveFilters($source->filters, $context))
                 ->andThen(function (array $resolvedFilters) use ($records, $source) {
                     $aggregateState = AggregateFactory::for($source->aggregate);
 
@@ -103,6 +101,10 @@ final readonly class LookupResolver implements Resolver
 
                     return Ok(Some($result));
                 });
+
+            $context->inspector?->annotate('label', $source->path);
+
+            return $result;
         } catch (Throwable $e) {
             return new Err($e);
         } finally {
@@ -117,10 +119,10 @@ final readonly class LookupResolver implements Resolver
      * @param  array<Filter>  $filters
      * @return list<Result<ResolvedFilter, Throwable>>
      */
-    private function resolveFilters(array $filters): array
+    private function resolveFilters(array $filters, Context $context): array
     {
         return map($filters, fn (Filter $filter): Result => $this->resolver
-            ->resolve($filter->value)
+            ->resolve($filter->value, $context)
             ->map(fn (Option $option) => new ResolvedFilter(
                 $filter,
                 $option->unwrapOr(null),

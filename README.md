@@ -25,8 +25,11 @@ composer require gosuperscript/axiom-lookup
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
+use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Resolvers\DelegatingResolver;
+use Superscript\Axiom\Sources\StaticSource;
 
 // Create a filesystem instance (local filesystem example)
 $adapter = new LocalFilesystemAdapter('/path/to/data');
@@ -45,8 +48,9 @@ $lookup = new LookupSource(
     columns: 'price'
 );
 
-// Resolve the lookup
-$result = $resolver->resolve($lookup);
+// Wrap the source in an Expression and invoke it like a function
+$query = new Expression($lookup, $resolver);
+$result = $query(); // Result<Option<mixed>>
 ```
 
 ## Using Different Storage Backends
@@ -58,6 +62,7 @@ The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
 use Superscript\Axiom\Resolvers\DelegatingResolver;
 
@@ -76,7 +81,7 @@ $lookup = new LookupSource(
     columns: ['name', 'email']
 );
 
-$result = $resolver->resolve($lookup);
+$result = (new Expression($lookup, $resolver))();
 ```
 
 ### Amazon S3
@@ -85,6 +90,7 @@ $result = $resolver->resolve($lookup);
 use League\Flysystem\Filesystem;
 use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
 use Aws\S3\S3Client;
+use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
 use Superscript\Axiom\Resolvers\DelegatingResolver;
 
@@ -112,7 +118,43 @@ $lookup = new LookupSource(
     columns: 'price'
 );
 
-$result = $resolver->resolve($lookup);
+$result = (new Expression($lookup, $resolver))();
+```
+
+### Reusing an Expression with Different Inputs
+
+`Expression` wraps a source together with the resolver and any named
+[`Definitions`](https://github.com/gosuperscript/axiom), and lets you invoke
+it like a function with per-call `bindings`. This is handy when the same
+lookup shape is reused with different symbol values:
+
+```php
+use Superscript\Axiom\Expression;
+use Superscript\Axiom\Resolvers\SymbolResolver;
+use Superscript\Axiom\Sources\SymbolSource;
+
+// Register SymbolResolver so `SymbolSource` placeholders can be resolved
+$resolver = new DelegatingResolver([
+    LookupSource::class => LookupResolver::class,
+    SymbolSource::class => SymbolResolver::class,
+]);
+$resolver->instance(\League\Flysystem\FilesystemOperator::class, $filesystem);
+
+// A lookup parameterised by a `category` symbol supplied at call time
+$lookup = new LookupSource(
+    path: 'products.csv',
+    filters: [new ValueFilter('category', new SymbolSource('category'))],
+    columns: 'price'
+);
+
+$query = new Expression($lookup, $resolver);
+
+// Inspect required parameters derived from the source AST
+$query->parameters(); // ['category']
+
+// Invoke with bindings — equivalent forms
+$electronics = $query(['category' => 'Electronics']);
+$books       = $query->call(['category' => 'Books']);
 ```
 
 ### Other Storage Options
