@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\CsvRecord;
@@ -81,7 +82,7 @@ class LookupResolverTest extends TestCase
             columns: ['age'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isOk());
         $this->assertEquals('30', $result->unwrap()->unwrap());
@@ -96,7 +97,7 @@ class LookupResolverTest extends TestCase
             columns: ['name', 'age', 'city'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $expected = [
@@ -117,7 +118,7 @@ class LookupResolverTest extends TestCase
             columns: ['price'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('999.99', $result->unwrap()->unwrap());
@@ -135,7 +136,7 @@ class LookupResolverTest extends TestCase
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('Alice', $result->unwrap()->unwrap());
@@ -151,7 +152,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'first',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('Alice', $result->unwrap()->unwrap());
@@ -167,7 +168,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'last',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('Charlie', $result->unwrap()->unwrap());
@@ -184,7 +185,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'salary',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('75000', $result->unwrap()->unwrap());
@@ -201,7 +202,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'salary',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('85000', $result->unwrap()->unwrap());
@@ -216,7 +217,7 @@ class LookupResolverTest extends TestCase
             columns: ['age'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
@@ -231,7 +232,7 @@ class LookupResolverTest extends TestCase
             columns: [],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $row = $result->unwrap()->unwrap();
@@ -251,7 +252,7 @@ class LookupResolverTest extends TestCase
             hasHeader: false,
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('Bob', $result->unwrap()->unwrap());
@@ -273,7 +274,7 @@ class LookupResolverTest extends TestCase
             columns: ['name', 'age'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $matches = $result->unwrap()->unwrap();
@@ -291,7 +292,7 @@ class LookupResolverTest extends TestCase
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();
@@ -312,7 +313,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'price',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $data = $result->unwrap()->unwrap();
@@ -332,7 +333,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'price',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $data = $result->unwrap()->unwrap();
@@ -358,7 +359,7 @@ class LookupResolverTest extends TestCase
             columns: ['value'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('value_500', $result->unwrap()->unwrap());
@@ -382,7 +383,7 @@ class LookupResolverTest extends TestCase
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
@@ -397,7 +398,7 @@ class LookupResolverTest extends TestCase
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         // Should return first row when no filters
@@ -414,7 +415,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'invalid_aggregate',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isErr());
     }
@@ -429,7 +430,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'min',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isErr());
     }
@@ -444,7 +445,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'max',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isErr());
     }
@@ -458,7 +459,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'count',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals(2, $result->unwrap()->unwrap()); // Alice and Charlie are in NYC
@@ -474,7 +475,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'salary',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals(160000, $result->unwrap()->unwrap()); // 75000 + 85000
@@ -490,7 +491,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'salary',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals(80000.0, $result->unwrap()->unwrap()); // (75000 + 85000) / 2
@@ -505,7 +506,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'sum',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isErr());
     }
@@ -519,7 +520,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'avg',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isErr());
     }
@@ -533,7 +534,7 @@ class LookupResolverTest extends TestCase
             columns: ['premium'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('15', $result->unwrap()->unwrap()); // 150k falls in 100k-200k band
@@ -548,7 +549,7 @@ class LookupResolverTest extends TestCase
             columns: ['premium'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('10', $result->unwrap()->unwrap()); // 50k falls in 0-100k band
@@ -563,7 +564,7 @@ class LookupResolverTest extends TestCase
             columns: ['premium'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('25', $result->unwrap()->unwrap()); // 500k falls in 300k+ band
@@ -578,7 +579,7 @@ class LookupResolverTest extends TestCase
             columns: ['premium'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('15', $result->unwrap()->unwrap()); // 100k falls in 100k-200k band (inclusive)
@@ -600,7 +601,7 @@ class LookupResolverTest extends TestCase
             columns: ['rate'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         $this->assertTrue($result->isOk());
         $this->assertEquals('10', $result->unwrap()->unwrap()); // North region, 150 in 100-200 band
@@ -619,7 +620,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'unknown_aggregate',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isErr());
         $this->assertStringContainsString('Unknown aggregate', $result->unwrapErr()->getMessage());
@@ -636,7 +637,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'age',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
@@ -653,7 +654,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'age',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
@@ -691,7 +692,7 @@ class LookupResolverTest extends TestCase
             aggregateColumn: 'value',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         unlink($tempFile);
 
@@ -714,7 +715,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'all',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isOk());
         $this->assertEquals([
@@ -737,7 +738,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'all',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isOk());
         $this->assertTrue($result->unwrap()->isNone());
@@ -807,7 +808,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'first',
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         // Should return Alice (first match), not Charlie (second match from NYC)
         $this->assertTrue($result->isOk());
@@ -825,7 +826,7 @@ class LookupResolverTest extends TestCase
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         // Verify error is returned
         $this->assertTrue($result->isErr());
@@ -851,7 +852,7 @@ class LookupResolverTest extends TestCase
             aggregate: 'unknown_aggregate_type', // This will cause an error after stream is opened
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         // Verify error is returned (aggregate error occurs after stream is opened)
         $this->assertTrue($result->isErr());
@@ -871,7 +872,7 @@ class LookupResolverTest extends TestCase
             columns: ['age'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
 
         $this->assertTrue($result->isErr());
     }
@@ -891,7 +892,7 @@ class LookupResolverTest extends TestCase
             columns: ['name'],
         );
 
-        $result = $this->resolver->resolve($source);
+        $result = $this->resolver->resolve($source, new Context());
         
         // Should get RuntimeException with "Could not open file" message
         $this->assertTrue($result->isErr());

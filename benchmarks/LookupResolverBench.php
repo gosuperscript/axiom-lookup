@@ -7,9 +7,13 @@ namespace Superscript\Axiom\Lookup\Benchmarks;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use PhpBench\Attributes\{BeforeMethods, Groups, Iterations, Revs, Warmup};
-use Superscript\Axiom\Lookup\Resolvers\{DelegatingResolver, LookupResolver, StaticResolver};
-use Superscript\Axiom\Lookup\Sources\{ValueFilter, LookupSource, RangeFilter, StaticSource};
-use Superscript\Axiom\Lookup\SymbolRegistry;
+use Superscript\Axiom\Context;
+use Superscript\Axiom\Lookup\LookupResolver;
+use Superscript\Axiom\Lookup\LookupSource;
+use Superscript\Axiom\Lookup\Support\Filters\{RangeFilter, ValueFilter};
+use Superscript\Axiom\Operators\{DefaultOverloader, OperatorOverloader, OverloaderManager};
+use Superscript\Axiom\Resolvers\{DelegatingResolver, StaticResolver};
+use Superscript\Axiom\Sources\StaticSource;
 
 /**
  * Benchmarks for CSV/TSV lookup resolver performance characteristics.
@@ -47,8 +51,8 @@ class LookupResolverBench
             LookupSource::class => LookupResolver::class,
             StaticSource::class => StaticResolver::class,
         ]);
-        $this->resolver->instance(SymbolRegistry::class, new SymbolRegistry([]));
         $this->resolver->instance(\League\Flysystem\FilesystemOperator::class, $this->filesystem);
+        $this->resolver->instance(OperatorOverloader::class, new OverloaderManager([new DefaultOverloader()]));
     }
 
     public function tearDown(): void
@@ -101,7 +105,7 @@ class LookupResolverBench
             columns: ['name', 'price'],
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -117,7 +121,7 @@ class LookupResolverBench
             columns: ['name', 'price'],
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -133,7 +137,7 @@ class LookupResolverBench
             columns: ['name', 'price'],
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -149,7 +153,7 @@ class LookupResolverBench
             columns: ['name', 'price'],
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -166,7 +170,7 @@ class LookupResolverBench
             aggregate: 'first',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -183,7 +187,7 @@ class LookupResolverBench
             aggregate: 'last',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -199,7 +203,7 @@ class LookupResolverBench
             aggregate: 'count',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -216,7 +220,7 @@ class LookupResolverBench
             aggregateColumn: 'price',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -233,7 +237,7 @@ class LookupResolverBench
             aggregateColumn: 'price',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -251,7 +255,7 @@ class LookupResolverBench
             aggregateColumn: 'price',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -269,7 +273,7 @@ class LookupResolverBench
             aggregateColumn: 'price',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -285,7 +289,7 @@ class LookupResolverBench
             columns: ['name', 'price'],
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -304,7 +308,7 @@ class LookupResolverBench
             columns: ['name', 'price'],
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 
     #[BeforeMethods('setUp')]
@@ -321,6 +325,6 @@ class LookupResolverBench
             aggregate: 'count',
         );
 
-        $this->resolver->resolve($source);
+        $this->resolver->resolve($source, new Context());
     }
 }

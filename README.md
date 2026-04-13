@@ -25,6 +25,7 @@ composer require gosuperscript/axiom-lookup
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
 use Superscript\Axiom\Resolvers\DelegatingResolver;
 
@@ -45,8 +46,8 @@ $lookup = new LookupSource(
     columns: 'price'
 );
 
-// Resolve the lookup
-$result = $resolver->resolve($lookup);
+// Resolve the lookup (Axiom v0.4.0 requires a Context)
+$result = $resolver->resolve($lookup, new Context());
 ```
 
 ## Using Different Storage Backends
@@ -58,6 +59,7 @@ The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
 use Superscript\Axiom\Resolvers\DelegatingResolver;
 
@@ -76,7 +78,7 @@ $lookup = new LookupSource(
     columns: ['name', 'email']
 );
 
-$result = $resolver->resolve($lookup);
+$result = $resolver->resolve($lookup, new Context());
 ```
 
 ### Amazon S3
@@ -85,6 +87,7 @@ $result = $resolver->resolve($lookup);
 use League\Flysystem\Filesystem;
 use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
 use Aws\S3\S3Client;
+use Superscript\Axiom\Context;
 use Superscript\Axiom\Lookup\{LookupResolver, LookupSource};
 use Superscript\Axiom\Resolvers\DelegatingResolver;
 
@@ -112,7 +115,7 @@ $lookup = new LookupSource(
     columns: 'price'
 );
 
-$result = $resolver->resolve($lookup);
+$result = $resolver->resolve($lookup, new Context());
 ```
 
 ### Other Storage Options
