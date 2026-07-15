@@ -32,11 +32,11 @@ final readonly class CsvRecord
     public function getString(string|int $column): ?string
     {
         $value = $this->data[$column] ?? null;
-        
+
         if ($value === null) {
             return null;
         }
-        
+
         return is_scalar($value) ? (string) $value : null;
     }
 
@@ -46,11 +46,11 @@ final readonly class CsvRecord
     public function getNumeric(string|int $column): ?float
     {
         $value = $this->data[$column] ?? null;
-        
+
         if ($value === null || !is_numeric($value)) {
             return null;
         }
-        
+
         return (float) $value;
     }
 
@@ -79,7 +79,7 @@ final readonly class CsvRecord
         if (empty($columns)) {
             return $this->data;
         }
-        
+
         if (is_string($columns) || is_int($columns)) {
             return $this->data[$columns] ?? null;
         }
@@ -87,12 +87,12 @@ final readonly class CsvRecord
         if (count($columns) === 1) {
             return $this->data[first($columns)] ?? null;
         }
-        
+
         $result = [];
         foreach ($columns as $column) {
             $result[$column] = $this->data[$column] ?? null;
         }
-        
+
         return $result;
     }
 

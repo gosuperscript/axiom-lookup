@@ -29,7 +29,7 @@ final readonly class Sum implements Aggregate
         if ($value !== null) {
             return new self($this->sum + $value, true);
         }
-        
+
         return $this;
     }
 

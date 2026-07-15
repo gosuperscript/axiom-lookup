@@ -5,28 +5,21 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 
 use League\Flysystem\Filesystem;
-use League\Flysystem\FilesystemOperator;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use Superscript\Axiom\Context;
+use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Axiom\Lookup\LookupResolver;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Lookup\Tests\Fixtures\SpyInspector;
-use Superscript\Axiom\Operators\DefaultOverloader;
-use Superscript\Axiom\Operators\OverloaderManager;
-use Superscript\Axiom\Resolvers\DelegatingResolver;
-use Superscript\Axiom\Resolvers\StaticResolver;
 use Superscript\Axiom\Sources\StaticSource;
 
-#[CoversClass(LookupResolver::class)]
-#[UsesClass(LookupSource::class)]
+#[CoversClass(LookupSource::class)]
 #[UsesClass(CsvRecord::class)]
 #[UsesClass(ValueFilter::class)]
 #[UsesClass(ResolvedFilter::class)]
@@ -34,7 +27,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(Aggregates\AggregateFactory::class)]
 class ResolutionInspectorTest extends TestCase
 {
-    private LookupResolver $lookupResolver;
+    private Filesystem $filesystem;
 
     private SpyInspector $inspector;
 
@@ -42,37 +35,35 @@ class ResolutionInspectorTest extends TestCase
     {
         $this->inspector = new SpyInspector();
 
-        $overloader = new OverloaderManager([new DefaultOverloader()]);
-
-        $delegating = new DelegatingResolver([
-            StaticSource::class => StaticResolver::class,
-        ]);
-
-        $adapter = new LocalFilesystemAdapter(__DIR__.'/../Fixtures');
-        $filesystem = new Filesystem($adapter);
-
-        $this->lookupResolver = new LookupResolver(
-            $filesystem,
-            $delegating,
-            $overloader,
-        );
+        $adapter = new LocalFilesystemAdapter(__DIR__ . '/../Fixtures');
+        $this->filesystem = new Filesystem($adapter);
     }
 
-    private function context(): Context
+    private function execute(LookupSource $source, bool $withInspector = true): void
     {
-        return new Context(inspector: $this->inspector);
+        $expression = new Expression($source, inspector: $withInspector ? $this->inspector : null);
+
+        $expression->compile()->unwrap()();
+    }
+
+    /**
+     * @param array<string|int> $columns
+     */
+    private function lookup(string $aggregate = 'first', array $columns = ['age']): LookupSource
+    {
+        return new LookupSource(
+            path: 'users.csv',
+            filesystem: $this->filesystem,
+            filters: [new ValueFilter('name', new StaticSource('Alice'))],
+            columns: $columns,
+            aggregate: $aggregate,
+        );
     }
 
     #[Test]
     public function it_annotates_label_with_source_path(): void
     {
-        $source = new LookupSource(
-            path: 'users.csv',
-            filters: [new ValueFilter('name', new StaticSource('Alice'))],
-            columns: ['age'],
-        );
-
-        $this->lookupResolver->resolve($source, $this->context());
+        $this->execute($this->lookup());
 
         $this->assertSame('users.csv', $this->inspector->annotations['label']);
     }
@@ -80,14 +71,7 @@ class ResolutionInspectorTest extends TestCase
     #[Test]
     public function it_annotates_aggregate(): void
     {
-        $source = new LookupSource(
-            path: 'users.csv',
-            filters: [new ValueFilter('name', new StaticSource('Alice'))],
-            columns: ['age'],
-            aggregate: 'first',
-        );
-
-        $this->lookupResolver->resolve($source, $this->context());
+        $this->execute($this->lookup(aggregate: 'first'));
 
         $this->assertSame('first', $this->inspector->annotations['aggregate']);
     }
@@ -95,13 +79,7 @@ class ResolutionInspectorTest extends TestCase
     #[Test]
     public function it_annotates_columns_when_not_empty(): void
     {
-        $source = new LookupSource(
-            path: 'users.csv',
-            filters: [new ValueFilter('name', new StaticSource('Alice'))],
-            columns: ['age', 'city'],
-        );
-
-        $this->lookupResolver->resolve($source, $this->context());
+        $this->execute($this->lookup(columns: ['age', 'city']));
 
         $this->assertSame(['age', 'city'], $this->inspector->annotations['columns']);
     }
@@ -109,13 +87,7 @@ class ResolutionInspectorTest extends TestCase
     #[Test]
     public function it_does_not_annotate_columns_when_empty(): void
     {
-        $source = new LookupSource(
-            path: 'users.csv',
-            filters: [new ValueFilter('name', new StaticSource('Alice'))],
-            columns: [],
-        );
-
-        $this->lookupResolver->resolve($source, $this->context());
+        $this->execute($this->lookup(columns: []));
 
         $this->assertArrayNotHasKey('columns', $this->inspector->annotations);
     }
@@ -123,28 +95,9 @@ class ResolutionInspectorTest extends TestCase
     #[Test]
     public function it_works_without_inspector(): void
     {
-        $overloader = new OverloaderManager([new DefaultOverloader()]);
+        $source = $this->lookup();
 
-        $delegating = new DelegatingResolver([
-            StaticSource::class => StaticResolver::class,
-        ]);
-
-        $adapter = new LocalFilesystemAdapter(__DIR__.'/../Fixtures');
-        $filesystem = new Filesystem($adapter);
-
-        $resolver = new LookupResolver(
-            $filesystem,
-            $delegating,
-            $overloader,
-        );
-
-        $source = new LookupSource(
-            path: 'users.csv',
-            filters: [new ValueFilter('name', new StaticSource('Alice'))],
-            columns: ['age'],
-        );
-
-        $result = $resolver->resolve($source, new Context());
+        $result = (new Expression($source))->compile()->unwrap()();
 
         $this->assertTrue($result->isOk());
         $this->assertSame('30', $result->unwrap()->unwrap());

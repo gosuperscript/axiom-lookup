@@ -23,7 +23,7 @@ final readonly class First implements Aggregate
         if ($this->record !== null) {
             return $this;
         }
-        
+
         return new self($record);
     }
 

@@ -4,11 +4,23 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
+use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Source;
 use Superscript\Monads\Result\Result;
 
+use function Superscript\Monads\Result\Err;
+use function Superscript\Monads\Result\Ok;
+
+/**
+ * Matches a single column against a comparison value.
+ *
+ * The comparison is plain PHP, not an Axiom operator: the cell's type is
+ * `Unknown`, so this is internal domain logic (see {@see Filter}). Two
+ * operators are supported — `==` (loose equality against the cell) and
+ * `in` (membership in a list value) — and any other operator is an honest
+ * error rather than a silent no-match.
+ */
 final readonly class ValueFilter implements Filter
 {
     public function __construct(
@@ -17,13 +29,14 @@ final readonly class ValueFilter implements Filter
         public string $operator = '==',
     ) {}
 
-    /** @return Result<bool, \Throwable> */
-    public function matches(CsvRecord $record, mixed $value, OperatorOverloader $operatorOverloader): Result
+    public function matches(CsvRecord $record, mixed $value): Result
     {
-        return $operatorOverloader->evaluate(
-            $record->get($this->column),
-            $value,
-            $this->operator
-        )->map(fn (mixed $result): bool => (bool) $result);
+        $cell = $record->get($this->column);
+
+        return match ($this->operator) {
+            '==' => Ok($cell == $value),
+            'in' => Ok(is_array($value) && in_array($cell, $value)),
+            default => Err(new RuntimeException("Unsupported filter operator: {$this->operator}")),
+        };
     }
 }
