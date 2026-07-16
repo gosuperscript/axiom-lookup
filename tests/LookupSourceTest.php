@@ -646,6 +646,29 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
+    public function it_compares_with_engine_equality_not_php_juggling(): void
+    {
+        // '1e2' and '100' are equal under PHP's loose ==, but they are
+        // distinct strings under the engine's ValueEquality. A lookup must
+        // agree with the language, so this filter finds no match.
+        $csvContent = "code,label\n1e2,scientific\n100,plain\n";
+        $this->filesystem->write('codes.csv', $csvContent);
+
+        $source = $this->lookup(
+            path: 'codes.csv',
+            filters: [$this->filter('code', new StaticSource('100'))],
+            columns: ['label'],
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertSame('plain', $result->unwrap()->unwrap()); // matches '100', never '1e2'
+
+        $this->filesystem->delete('codes.csv');
+    }
+
+    #[Test]
     public function it_reports_unknown_aggregate_message(): void
     {
         $source = $this->lookup(

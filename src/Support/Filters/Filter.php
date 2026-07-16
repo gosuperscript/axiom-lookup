@@ -12,11 +12,14 @@ use Throwable;
 /**
  * A row predicate for a lookup.
  *
- * Filter matching is host-owned domain logic, deliberately kept out of
- * Axiom's typed operator system: a raw CSV cell has type `Unknown`, and
- * `Unknown` refuses every operator by design, so a lookup's `city == 'NYC'`
- * is not — and cannot be — a first-class Axiom expression. These filters
- * compare values in plain PHP.
+ * Filter matching runs at evaluation time, not through Axiom's compile-time
+ * operator system: a raw CSV cell has type `Unknown`, and `Unknown` refuses
+ * every operator by design, so a lookup's `city == 'NYC'` is not — and cannot
+ * be — a first-class, compile-checked Axiom expression. The comparison is
+ * still the engine's, though: equality-based filters compare through
+ * {@see \Superscript\Axiom\Operators\ValueEquality}, the same authority the
+ * language uses everywhere else, so lookups never disagree about what "equal"
+ * means (no PHP type-juggling).
  */
 interface Filter
 {

@@ -1,0 +1,5 @@
+region,min_value,max_value,rate
+North,0,100,5
+North,100,200,10
+South,0,100,7
+South,100,200,12
