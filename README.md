@@ -12,7 +12,7 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 - **Dialect-Native Comparisons**: Filter operators are compiled from the same composed Axiom dialect as ordinary infix expressions
 - **Typed CSV Boundaries**: Declare column types when filters need coercion or non-string operations; undeclared columns remain raw strings
 - **Serialisable descriptions**: a `LookupSource` is pure data — the filesystem lives on the `LookupExtension`, so a lookup tree can be persisted and loaded later
-- **Honest Types**: numeric aggregates declare `Option<Number>`; every other aggregate declares `Option<Unknown>` (a raw CSV cell), bridged downstream with a `Coerce`/`Ascription`
+- **Honest Types**: numeric aggregates declare `Option<Number>`, `all` declares `List<Unknown>`, and aggregates returning one raw row/cell declare `Option<Unknown>`
 - **Early Exit Optimization**: `first` aggregate stops reading after first match
 - **Flexible Storage**: Support for local files, S3, and other storage backends via Flysystem
 - **PHP 8.4 Compatible**: Full compatibility with latest PHP features
@@ -186,6 +186,31 @@ $lookup = new LookupSource(
 ```
 
 Extension-owned operators work without lookup-specific integration. If an extension in the dialect owns `equals-ignore-case` for `String × String → Boolean`, a `ValueFilter(..., 'equals-ignore-case')` binds that exact rule. Unknown operators, incompatible operands, and operators that do not return `Boolean` are compile errors. A cell that cannot be coerced to its declared type is a runtime boundary error rather than a silent string comparison.
+
+An `all` lookup is a total collection: no matching rows produce `[]`, not absence. This makes a nested collection lookup usable as the right side of `in` after one explicit element-type bridge:
+
+```php
+use Superscript\Axiom\Sources\Coerce;
+use Superscript\Axiom\Types\ListType;
+use Superscript\Axiom\Types\StringType;
+
+$cities = new LookupSource(
+    path: 'allowed-cities.csv',
+    columns: ['city'],
+    aggregate: 'all',
+);
+
+$users = new LookupSource(
+    path: 'users.csv',
+    filters: [new ValueFilter(
+        'city',
+        new Coerce(new ListType(new StringType()), $cities),
+        'in',
+    )],
+    columns: ['name'],
+    aggregate: 'all',
+);
+```
 
 ### Other Storage Options
 

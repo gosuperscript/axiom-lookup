@@ -20,6 +20,7 @@ use Superscript\Axiom\Runtime;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\SourceCompilation;
 use Superscript\Axiom\Types\BooleanType;
+use Superscript\Axiom\Types\ListType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
 use Superscript\Axiom\Types\StringType;
@@ -53,10 +54,10 @@ use function Superscript\Monads\Result\Ok;
  *
  * The compiled node's type is deliberately honest about what a CSV can
  * promise: `count`/`sum`/`avg` are numeric by construction, so they declare
- * `Option<Number>`; every other aggregate hands back a raw CSV cell (or a row
- * of them), whose type is genuinely unknowable at compile time, so it declares
- * `Option<Unknown>`, which a downstream consumer bridges with an explicit
- * `Coerce`/`Ascription`. "No matching row" is a legal `None` either way.
+ * `Option<Number>`; `all` is a total collection and declares `List<Unknown>`;
+ * every other aggregate hands back raw CSV data whose type is genuinely
+ * unknowable at compile time, so it declares `Option<Unknown>`. A downstream
+ * consumer bridges `Unknown` with an explicit `Coerce`/`Ascription`.
  */
 final class LookupExtension extends Extension
 {
@@ -106,13 +107,16 @@ final class LookupExtension extends Extension
 
     /**
      * The declared payload type. Numeric aggregates are statically known;
-     * every other aggregate yields raw cells that cannot be typed.
+     * all is a total collection; the remaining aggregates yield raw cells
+     * that cannot be typed.
      */
     private function resultType(LookupSource $source): Type
     {
-        return in_array($source->aggregate, ['count', 'sum', 'avg'], true)
-            ? new OptionType(new NumberType())
-            : new OptionType(new UnknownType());
+        return match ($source->aggregate) {
+            'count', 'sum', 'avg' => new OptionType(new NumberType()),
+            'all' => new ListType(new UnknownType()),
+            default => new OptionType(new UnknownType()),
+        };
     }
 
     /** @return Result<CompiledFilter, TypeMismatch> */
@@ -261,9 +265,18 @@ final class LookupExtension extends Extension
     /** @return Result<Option<mixed>, Throwable> */
     private function readCellAs(CsvRecord $record, string|int $column, Type $type): Result
     {
-        return $record->has($column)
-            ? $type->coerce($record->get($column))
-            : Ok(None());
+        if (! $record->has($column)) {
+            return Ok(None());
+        }
+
+        $value = $record->get($column);
+
+        // League CSV already supplies strings. Keep the default CSV domain
+        // lossless: StringType::coerce() deliberately reads '' and 'null' as
+        // absence at lenient input boundaries, but they are valid raw cells.
+        return $type::class === StringType::class && is_string($value)
+            ? $type->assert($value)
+            : $type->coerce($value);
     }
 
     /** @return Result<bool, Throwable> */
@@ -338,7 +351,11 @@ final class LookupExtension extends Extension
 
                     $result = $aggregateState->finalize($source->columns);
 
-                    if ($result === null || (is_array($result) && $result === [])) {
+                    if ($source->aggregate === 'all') {
+                        return Ok(Some($result));
+                    }
+
+                    if ($result === null) {
                         return Ok(None());
                     }
 

@@ -29,6 +29,7 @@ use Superscript\Axiom\Source;
 use Superscript\Axiom\Sources\Coerce;
 use Superscript\Axiom\Sources\StaticSource;
 use Superscript\Axiom\Types\BooleanType;
+use Superscript\Axiom\Types\ListType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
 use Superscript\Axiom\Types\StringType;
@@ -711,6 +712,28 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
+    public function undeclared_string_columns_preserve_empty_and_literal_null_cells(): void
+    {
+        $this->filesystem->write('raw_strings.csv', "key,label\n,blank\nnull,literal-null\n");
+
+        $blank = $this->execute($this->lookup(
+            path: 'raw_strings.csv',
+            filters: [$this->filter('key', new StaticSource(''))],
+            columns: ['label'],
+        ));
+        $literalNull = $this->execute($this->lookup(
+            path: 'raw_strings.csv',
+            filters: [$this->filter('key', new StaticSource('null'))],
+            columns: ['label'],
+        ));
+
+        $this->assertSame('blank', $blank->unwrap()->unwrap());
+        $this->assertSame('literal-null', $literalNull->unwrap()->unwrap());
+
+        $this->filesystem->delete('raw_strings.csv');
+    }
+
+    #[Test]
     public function value_filters_bind_extension_owned_operators_from_the_composed_dialect(): void
     {
         $caseInsensitive = new class extends Extension {
@@ -970,7 +993,57 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_none_when_no_results_are_found_for_all_aggregate(): void
+    public function a_nested_all_lookup_can_supply_a_typed_list_to_in(): void
+    {
+        $cities = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Alice'))],
+            columns: ['city'],
+            aggregate: 'all',
+        );
+        $users = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter(
+                'city',
+                new Coerce(new ListType(new StringType()), $cities),
+                'in',
+            )],
+            columns: ['name'],
+            aggregate: 'all',
+        );
+
+        $result = $this->execute($users);
+
+        $this->assertSame(['Alice', 'Charlie'], $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function an_empty_nested_all_lookup_supplies_an_empty_list_to_in(): void
+    {
+        $cities = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Peter'))],
+            columns: ['city'],
+            aggregate: 'all',
+        );
+        $users = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter(
+                'city',
+                new Coerce(new ListType(new StringType()), $cities),
+                'in',
+            )],
+            columns: ['name'],
+            aggregate: 'all',
+        );
+
+        $result = $this->execute($users);
+
+        $this->assertSame([], $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function all_returns_an_empty_list_when_no_results_are_found(): void
     {
         $source = $this->lookup(
             path: 'users.csv',
@@ -985,7 +1058,7 @@ class LookupSourceTest extends TestCase
         $result = $this->execute($source);
 
         $this->assertTrue($result->isOk());
-        $this->assertTrue($result->unwrap()->isNone());
+        $this->assertSame([], $result->unwrap()->unwrap());
     }
 
     #[Test]
@@ -1018,7 +1091,20 @@ class LookupSourceTest extends TestCase
         yield 'last' => ['last', UnknownType::class];
         yield 'min' => ['min', UnknownType::class];
         yield 'max' => ['max', UnknownType::class];
-        yield 'all' => ['all', UnknownType::class];
+    }
+
+    #[Test]
+    public function all_declares_a_total_list_of_unknown_values(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            aggregate: 'all',
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertInstanceOf(ListType::class, $returns);
+        $this->assertInstanceOf(UnknownType::class, $returns->type);
     }
 
     #[Test]
