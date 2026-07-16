@@ -6,6 +6,7 @@ namespace Superscript\Axiom\Lookup;
 
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Source;
+use Superscript\Axiom\Types\Type;
 
 /**
  * A CSV/TSV lookup, described as pure data: the file path, the filters, the
@@ -24,6 +25,7 @@ final readonly class LookupSource implements Source
     /**
      * @param array<Filter> $filters
      * @param array<string|int> $columns
+     * @param array<string|int, Type> $schema
      */
     public function __construct(
         public string $path,
@@ -33,5 +35,6 @@ final readonly class LookupSource implements Source
         public string|int|null $aggregateColumn = null,
         public string $delimiter = ',',
         public bool $hasHeader = true,
+        public array $schema = [],
     ) {}
 }

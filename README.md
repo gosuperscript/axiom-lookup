@@ -9,6 +9,8 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 - **Explicit Filter API**: `ValueFilter` and `RangeFilter` for clear, self-documenting code
 - **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
 - **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
+- **Dialect-Native Comparisons**: Filter operators are compiled from the same composed Axiom dialect as ordinary infix expressions
+- **Typed CSV Boundaries**: Declare column types when filters need coercion or non-string operations; undeclared columns remain raw strings
 - **Serialisable descriptions**: a `LookupSource` is pure data — the filesystem lives on the `LookupExtension`, so a lookup tree can be persisted and loaded later
 - **Honest Types**: numeric aggregates declare `Option<Number>`; every other aggregate declares `Option<Unknown>` (a raw CSV cell), bridged downstream with a `Coerce`/`Ascription`
 - **Early Exit Optimization**: `first` aggregate stops reading after first match
@@ -145,6 +147,45 @@ $program = (new Expression($lookup, dialect: $dialect, declarations: ['category'
 $electronics = $program(['category' => 'Electronics']);
 $books       = $program->call(['category' => 'Books']);
 ```
+
+## Typed filters and operators
+
+Filters are serialisable descriptions. During compilation, `LookupExtension` compiles each filter value and binds its operator from the expression's composed dialect. The resulting operation is reused for every row; filters do not contain a resolver and do not reimplement comparisons at runtime.
+
+CSV cells are strings by default. Add a `schema` entry when a filter should admit a cell as another Axiom type. For example, numeric ordering needs a numeric column declaration:
+
+```php
+use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Sources\StaticSource;
+use Superscript\Axiom\Types\NumberType;
+
+$lookup = new LookupSource(
+    path: 'users.csv',
+    filters: [new ValueFilter('age', new StaticSource(30), '>=')],
+    columns: ['name'],
+    schema: ['age' => new NumberType()],
+);
+```
+
+`RangeFilter` uses the same mechanism for its `[minimum, maximum)` test, so both bound columns should declare an orderable type:
+
+```php
+use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
+use Superscript\Axiom\Sources\SymbolSource;
+use Superscript\Axiom\Types\NumberType;
+
+$lookup = new LookupSource(
+    path: 'premium_bands.csv',
+    filters: [new RangeFilter('minimum', 'maximum', new SymbolSource('turnover'))],
+    columns: ['premium'],
+    schema: [
+        'minimum' => new NumberType(),
+        'maximum' => new NumberType(),
+    ],
+);
+```
+
+Extension-owned operators work without lookup-specific integration. If an extension in the dialect owns `equals-ignore-case` for `String × String → Boolean`, a `ValueFilter(..., 'equals-ignore-case')` binds that exact rule. Unknown operators, incompatible operands, and operators that do not return `Boolean` are compile errors. A cell that cannot be admitted by its declared type is a runtime boundary error rather than a silent string comparison.
 
 ### Other Storage Options
 

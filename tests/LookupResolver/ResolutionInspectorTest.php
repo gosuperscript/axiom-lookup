@@ -16,6 +16,7 @@ use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Aggregates;
+use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Lookup\Tests\Fixtures\SpyInspector;
@@ -25,6 +26,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[CoversClass(LookupSource::class)]
 #[UsesClass(CsvRecord::class)]
 #[UsesClass(ValueFilter::class)]
+#[UsesClass(CompiledFilter::class)]
 #[UsesClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]

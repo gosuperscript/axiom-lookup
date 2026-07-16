@@ -14,17 +14,25 @@ use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Extension;
 use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Aggregates;
+use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
+use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Operators\Operator;
 use Superscript\Axiom\Source;
+use Superscript\Axiom\Sources\Coerce;
 use Superscript\Axiom\Sources\StaticSource;
+use Superscript\Axiom\Types\BooleanType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
+use Superscript\Axiom\Types\StringType;
+use Superscript\Axiom\Types\Type;
 use Superscript\Axiom\Types\UnknownType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
@@ -33,6 +41,7 @@ use Superscript\Monads\Result\Result;
 #[CoversClass(LookupSource::class)]
 #[CoversClass(ValueFilter::class)]
 #[CoversClass(RangeFilter::class)]
+#[CoversClass(CompiledFilter::class)]
 #[CoversClass(ResolvedFilter::class)]
 #[UsesClass(CsvRecord::class)]
 #[UsesClass(Aggregates\First::class)]
@@ -57,6 +66,7 @@ class LookupSourceTest extends TestCase
     /**
      * @param array<\Superscript\Axiom\Lookup\Support\Filters\Filter> $filters
      * @param array<string|int> $columns
+     * @param array<string|int, Type> $schema
      */
     private function lookup(
         string $path,
@@ -66,6 +76,7 @@ class LookupSourceTest extends TestCase
         string|int|null $aggregateColumn = null,
         string $delimiter = ',',
         bool $hasHeader = true,
+        array $schema = [],
     ): LookupSource {
         return new LookupSource(
             path: $path,
@@ -75,6 +86,7 @@ class LookupSourceTest extends TestCase
             aggregateColumn: $aggregateColumn,
             delimiter: $delimiter,
             hasHeader: $hasHeader,
+            schema: $schema,
         );
     }
 
@@ -96,9 +108,16 @@ class LookupSourceTest extends TestCase
      * needs is injected through the LookupExtension on the dialect, so the
      * LookupSource itself stays pure, serialisable data.
      */
-    private function expression(LookupSource $source, ?FilesystemOperator $filesystem = null): Expression
-    {
-        $dialect = Dialect::core()->with(new LookupExtension($filesystem ?? $this->filesystem));
+    /** @param list<Extension> $extensions */
+    private function expression(
+        LookupSource $source,
+        ?FilesystemOperator $filesystem = null,
+        array $extensions = [],
+    ): Expression {
+        $dialect = Dialect::core()->with(
+            new LookupExtension($filesystem ?? $this->filesystem),
+            ...$extensions,
+        );
 
         return new Expression($source, dialect: $dialect);
     }
@@ -106,6 +125,18 @@ class LookupSourceTest extends TestCase
     private function filter(string|int $column, Source $value, string $operator = '=='): ValueFilter
     {
         return new ValueFilter($column, $value, $operator);
+    }
+
+    /** @return array<string|int, Type> */
+    private static function numbers(string|int ...$columns): array
+    {
+        $schema = [];
+
+        foreach ($columns as $column) {
+            $schema[$column] = new NumberType();
+        }
+
+        return $schema;
     }
 
     #[Test]
@@ -305,7 +336,10 @@ class LookupSourceTest extends TestCase
 
         $source = $this->lookup(
             path: 'users.csv',
-            filters: [$this->filter('city', $cityLookup)],
+            filters: [$this->filter(
+                'city',
+                new Coerce(new OptionType(new StringType()), $cityLookup),
+            )],
             columns: ['name', 'age'],
         );
 
@@ -414,7 +448,10 @@ class LookupSourceTest extends TestCase
 
         $source = $this->lookup(
             path: 'users.csv',
-            filters: [$this->filter('city', $noneSource)],
+            filters: [$this->filter(
+                'city',
+                new Coerce(new OptionType(new StringType()), $noneSource),
+            )],
             columns: ['name'],
         );
 
@@ -565,8 +602,9 @@ class LookupSourceTest extends TestCase
     {
         $source = $this->lookup(
             path: 'premium_bands.csv',
-            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('150000'))],
+            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource(150000))],
             columns: ['premium'],
+            schema: self::numbers('min_turnover', 'max_turnover'),
         );
 
         $result = $this->execute($source);
@@ -580,8 +618,9 @@ class LookupSourceTest extends TestCase
     {
         $source = $this->lookup(
             path: 'premium_bands.csv',
-            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('50000'))],
+            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource(50000))],
             columns: ['premium'],
+            schema: self::numbers('min_turnover', 'max_turnover'),
         );
 
         $result = $this->execute($source);
@@ -595,8 +634,9 @@ class LookupSourceTest extends TestCase
     {
         $source = $this->lookup(
             path: 'premium_bands.csv',
-            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('500000'))],
+            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource(500000))],
             columns: ['premium'],
+            schema: self::numbers('min_turnover', 'max_turnover'),
         );
 
         $result = $this->execute($source);
@@ -610,8 +650,9 @@ class LookupSourceTest extends TestCase
     {
         $source = $this->lookup(
             path: 'premium_bands.csv',
-            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource('100000'))],
+            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource(100000))],
             columns: ['premium'],
+            schema: self::numbers('min_turnover', 'max_turnover'),
         );
 
         $result = $this->execute($source);
@@ -631,9 +672,10 @@ class LookupSourceTest extends TestCase
             path: 'regional_bands.csv',
             filters: [
                 $this->filter('region', new StaticSource('North')),
-                new RangeFilter('min_value', 'max_value', new StaticSource('150')),
+                new RangeFilter('min_value', 'max_value', new StaticSource(150)),
             ],
             columns: ['rate'],
+            schema: self::numbers('min_value', 'max_value'),
         );
 
         $result = $this->execute($source);
@@ -666,6 +708,152 @@ class LookupSourceTest extends TestCase
         $this->assertSame('plain', $result->unwrap()->unwrap()); // matches '100', never '1e2'
 
         $this->filesystem->delete('codes.csv');
+    }
+
+    #[Test]
+    public function value_filters_bind_extension_owned_operators_from_the_composed_dialect(): void
+    {
+        $caseInsensitive = new class extends Extension {
+            public function operators(): array
+            {
+                return [
+                    Operator::infix('equals-ignore-case')
+                        ->signature(new StringType(), new StringType())
+                        ->returns(new BooleanType())
+                        ->evaluate(fn(string $left, string $right): bool => strcasecmp($left, $right) === 0),
+                ];
+            }
+        };
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('ALICE'), 'equals-ignore-case')],
+            columns: ['age'],
+        );
+
+        $result = $this->expression($source, extensions: [$caseInsensitive])
+            ->compile()->unwrap()();
+
+        $this->assertSame('30', $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function declared_numeric_columns_are_admitted_before_comparison(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('age', new StaticSource(30), '>=')],
+            columns: ['name'],
+            schema: self::numbers('age'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame('Alice', $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function a_filter_operator_must_return_boolean(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('age', new StaticSource(5), '+')],
+            schema: self::numbers('age'),
+        );
+
+        $result = $this->expression($source)->compile();
+
+        $this->assertTrue($result->isErr());
+        $mismatch = $result->unwrapErr();
+        $this->assertStringContainsString('must return Boolean', $mismatch->describe());
+        $this->assertCount(1, $mismatch->causes);
+    }
+
+    #[Test]
+    public function unknown_filter_kinds_are_compile_errors(): void
+    {
+        $filter = new class (new StaticSource('Alice')) implements Filter {
+            public function __construct(public Source $value) {}
+        };
+        $source = $this->lookup(path: 'users.csv', filters: [$filter]);
+
+        $result = $this->expression($source)->compile();
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('has no compiler in LookupExtension', $result->unwrapErr()->describe());
+    }
+
+    #[Test]
+    public function invalid_typed_cells_fail_at_the_lookup_boundary(): void
+    {
+        $this->filesystem->write('invalid_number.csv', "minimum,maximum\nnot-a-number,200\n");
+        $source = $this->lookup(
+            path: 'invalid_number.csv',
+            filters: [new RangeFilter('minimum', 'maximum', new StaticSource(100))],
+            aggregate: 'count',
+            schema: self::numbers('minimum', 'maximum'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+
+        $this->filesystem->delete('invalid_number.csv');
+    }
+
+    #[Test]
+    public function invalid_typed_maximum_cells_fail_at_the_lookup_boundary(): void
+    {
+        $this->filesystem->write('invalid_maximum.csv', "minimum,maximum\n50,not-a-number\n");
+        $source = $this->lookup(
+            path: 'invalid_maximum.csv',
+            filters: [new RangeFilter('minimum', 'maximum', new StaticSource(100))],
+            aggregate: 'count',
+            schema: self::numbers('minimum', 'maximum'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+
+        $this->filesystem->delete('invalid_maximum.csv');
+    }
+
+    #[Test]
+    public function value_filters_do_not_match_rows_without_their_column(): void
+    {
+        $this->filesystem->write('missing_value.csv', "Alice,30\n");
+        $source = $this->lookup(
+            path: 'missing_value.csv',
+            filters: [$this->filter(2, new StaticSource('active'))],
+            aggregate: 'count',
+            hasHeader: false,
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+
+        $this->filesystem->delete('missing_value.csv');
+    }
+
+    #[Test]
+    public function range_filters_do_not_match_values_below_the_minimum(): void
+    {
+        $this->filesystem->write('below_minimum.csv', "minimum,maximum\n100,200\n");
+        $source = $this->lookup(
+            path: 'below_minimum.csv',
+            filters: [new RangeFilter('minimum', 'maximum', new StaticSource(99))],
+            aggregate: 'count',
+            schema: self::numbers('minimum', 'maximum'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+
+        $this->filesystem->delete('below_minimum.csv');
     }
 
     #[Test]
@@ -852,92 +1040,116 @@ class LookupSourceTest extends TestCase
     #[Test]
     public function range_filter_returns_false_when_min_column_missing(): void
     {
-        $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
-        $record = CsvRecord::from(['max_price' => '200', 'name' => 'Product']); // min_price is missing
+        $this->filesystem->write('missing_min.csv', "200,Product\n");
+        $source = $this->lookup(
+            path: 'missing_min.csv',
+            filters: [new RangeFilter(2, 0, new StaticSource(100))],
+            aggregate: 'count',
+            hasHeader: false,
+            schema: self::numbers(2, 0),
+        );
 
-        $result = $filter->matches($record, '100');
+        $result = $this->execute($source);
 
         $this->assertTrue($result->isOk());
-        $this->assertFalse($result->mapOr(true, fn(bool $v) => $v));
+        $this->assertTrue($result->unwrap()->isNone());
+
+        $this->filesystem->delete('missing_min.csv');
     }
 
     #[Test]
     public function range_filter_returns_false_when_max_column_missing(): void
     {
-        $filter = new RangeFilter('min_price', 'max_price', new StaticSource('100'));
-        $record = CsvRecord::from(['min_price' => '50', 'name' => 'Product']); // max_price is missing
+        $this->filesystem->write('missing_max.csv', "50,Product\n");
+        $source = $this->lookup(
+            path: 'missing_max.csv',
+            filters: [new RangeFilter(0, 2, new StaticSource(100))],
+            aggregate: 'count',
+            hasHeader: false,
+            schema: self::numbers(0, 2),
+        );
 
-        $result = $filter->matches($record, '100');
+        $result = $this->execute($source);
 
         $this->assertTrue($result->isOk());
-        $this->assertFalse($result->mapOr(true, fn(bool $v) => $v));
+        $this->assertTrue($result->unwrap()->isNone());
+
+        $this->filesystem->delete('missing_max.csv');
     }
 
     #[Test]
-    public function range_filter_handles_non_numeric_values(): void
+    public function range_filters_require_orderable_declared_column_types(): void
     {
-        $filter = new RangeFilter('min_value', 'max_value', new StaticSource('100'));
-        $record = CsvRecord::from([
-            'min_value' => '50',
-            'max_value' => '150',
-            'name' => 'Product',
-        ]);
+        $source = $this->lookup(
+            path: 'premium_bands.csv',
+            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource(100000))],
+        );
 
-        // Should work with numeric values - [min, max) range
-        $this->assertTrue($filter->matches($record, '100')->mapOr(false, fn(bool $v) => $v));
-        $this->assertTrue($filter->matches($record, '50')->mapOr(false, fn(bool $v) => $v)); // Exactly at min (included)
-        $this->assertFalse($filter->matches($record, '150')->mapOr(true, fn(bool $v) => $v)); // At max (excluded)
-        $this->assertFalse($filter->matches($record, '200')->mapOr(true, fn(bool $v) => $v)); // Above max
+        $result = $this->expression($source)->compile();
 
-        // Test with non-numeric comparisons
-        $record2 = CsvRecord::from([
-            'min_value' => 'abc',
-            'max_value' => 'xyz',
-            'name' => 'Product2',
-        ]);
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('expects Number and Number', $result->unwrapErr()->describe());
+    }
 
-        $this->assertTrue($filter->matches($record2, 'def')->mapOr(false, fn(bool $v) => $v)); // 'def' >= 'abc' && 'def' < 'xyz'
-        $this->assertFalse($filter->matches($record2, 'aaa')->mapOr(true, fn(bool $v) => $v)); // Below min
+    #[Test]
+    public function both_range_columns_must_support_their_bound_operation(): void
+    {
+        $source = $this->lookup(
+            path: 'premium_bands.csv',
+            filters: [new RangeFilter('min_turnover', 'max_turnover', new StaticSource(100000))],
+            schema: [
+                'min_turnover' => new NumberType(),
+                'max_turnover' => new StringType(),
+            ],
+        );
+
+        $result = $this->expression($source)->compile();
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('expects Number and Number', $result->unwrapErr()->describe());
     }
 
     #[Test]
     public function value_filter_returns_error_for_unsupported_operator(): void
     {
-        // Called directly (no surrounding try/catch), an unsupported operator
-        // is an honest Err rather than a silent no-match.
-        $filter = $this->filter('name', new StaticSource('Alice'), '??unsupported??');
-        $record = CsvRecord::from(['name' => 'Alice']);
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Alice'), '??unsupported??')],
+        );
 
-        $result = $filter->matches($record, 'Alice');
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
-        $this->assertInstanceOf(\RuntimeException::class, $result->unwrapErr());
-        $this->assertStringContainsString('Unsupported filter operator', $result->unwrapErr()->getMessage());
+        $this->assertStringContainsString('Operator [??unsupported??] is not supported', $result->unwrapErr()->describe());
     }
 
     #[Test]
-    public function value_filter_in_operator_returns_false_for_non_array_value(): void
+    public function value_filter_in_operator_requires_a_list_value(): void
     {
-        // 'in' requires a list value; a scalar can never satisfy membership.
-        $filter = $this->filter('name', new StaticSource('Alice'), 'in');
-        $record = CsvRecord::from(['name' => 'Alice']);
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Alice'), 'in')],
+        );
 
-        $result = $filter->matches($record, 'Alice');
+        $result = $this->expression($source)->compile();
 
-        $this->assertTrue($result->isOk());
-        $this->assertFalse($result->mapOr(true, fn(bool $v) => $v));
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('must be a present list', $result->unwrapErr()->describe());
     }
 
     #[Test]
     public function value_filter_in_operator_returns_false_when_cell_absent_from_list(): void
     {
-        $filter = $this->filter('name', new StaticSource(['Bob', 'Eve']), 'in');
-        $record = CsvRecord::from(['name' => 'Alice']);
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource(['Nobody']), 'in')],
+            columns: ['name'],
+        );
 
-        $result = $filter->matches($record, ['Bob', 'Eve']);
+        $result = $this->execute($source);
 
         $this->assertTrue($result->isOk());
-        $this->assertFalse($result->mapOr(true, fn(bool $v) => $v));
+        $this->assertTrue($result->unwrap()->isNone());
     }
 
     #[Test]
@@ -1005,7 +1217,7 @@ class LookupSourceTest extends TestCase
             columns: ['age'],
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
     }

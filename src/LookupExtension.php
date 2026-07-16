@@ -10,14 +10,22 @@ use RuntimeException;
 use Superscript\Axiom\CompiledNode;
 use Superscript\Axiom\Extension;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
+use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
+use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
+use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Operators\ResolvedOperation;
 use Superscript\Axiom\Runtime;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\SourceCompilation;
+use Superscript\Axiom\Types\BooleanType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
+use Superscript\Axiom\Types\StringType;
 use Superscript\Axiom\Types\Type;
+use Superscript\Axiom\Types\TypeMismatch;
+use Superscript\Axiom\Types\TypeRelations;
 use Superscript\Axiom\Types\UnknownType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Err;
@@ -81,7 +89,13 @@ final class LookupExtension extends Extension
                 return $node;
             }
 
-            $compiledFilters[] = [$filter, $node->unwrap()];
+            $compiled = $this->compileFilter($source, $filter, $node->unwrap(), $compilation);
+
+            if ($compiled->isErr()) {
+                return $compiled;
+            }
+
+            $compiledFilters[] = $compiled->unwrap();
         }
 
         return Ok(new CompiledNode(
@@ -101,11 +115,171 @@ final class LookupExtension extends Extension
             : new OptionType(new UnknownType());
     }
 
+    /** @return Result<CompiledFilter, TypeMismatch> */
+    private function compileFilter(
+        LookupSource $source,
+        Filter $filter,
+        CompiledNode $value,
+        SourceCompilation $compilation,
+    ): Result {
+        if ($filter instanceof ValueFilter) {
+            return $this->compileValueFilter($source, $filter, $value, $compilation);
+        }
+
+        if ($filter instanceof RangeFilter) {
+            return $this->compileRangeFilter($source, $filter, $value, $compilation);
+        }
+
+        return new Err(new TypeMismatch(sprintf(
+            'Filter [%s] has no compiler in LookupExtension.',
+            $filter::class,
+        )));
+    }
+
+    /** @return Result<CompiledFilter, TypeMismatch> */
+    private function compileValueFilter(
+        LookupSource $source,
+        ValueFilter $filter,
+        CompiledNode $value,
+        SourceCompilation $compilation,
+    ): Result {
+        $cellType = $this->columnType($source, $filter->column);
+
+        return $this->booleanInfix($compilation, $cellType, $filter->operator, $value->returns)
+            ->map(fn(ResolvedOperation $operation) => new CompiledFilter(
+                $value,
+                fn(CsvRecord $record, mixed $resolved): Result => $this->matchValue(
+                    $record,
+                    $filter->column,
+                    $cellType,
+                    $resolved,
+                    $operation,
+                ),
+            ));
+    }
+
+    /** @return Result<CompiledFilter, TypeMismatch> */
+    private function compileRangeFilter(
+        LookupSource $source,
+        RangeFilter $filter,
+        CompiledNode $value,
+        SourceCompilation $compilation,
+    ): Result {
+        $minimumType = $this->columnType($source, $filter->minColumn);
+        $maximumType = $this->columnType($source, $filter->maxColumn);
+
+        return $this->booleanInfix($compilation, $value->returns, '>=', $minimumType)
+            ->andThen(fn(ResolvedOperation $minimum) => $this
+                ->booleanInfix($compilation, $value->returns, '<', $maximumType)
+                ->map(fn(ResolvedOperation $maximum) => new CompiledFilter(
+                    $value,
+                    fn(CsvRecord $record, mixed $resolved): Result => $this->matchRange(
+                        $record,
+                        $filter,
+                        $minimumType,
+                        $maximumType,
+                        $resolved,
+                        $minimum,
+                        $maximum,
+                    ),
+                )));
+    }
+
+    /** @return Result<ResolvedOperation, TypeMismatch> */
+    private function booleanInfix(
+        SourceCompilation $compilation,
+        Type $left,
+        string $operator,
+        Type $right,
+    ): Result {
+        return $compilation->infix($left, $operator, $right)
+            ->andThen(fn(ResolvedOperation $operation) => TypeRelations::isTypeAssignableTo(
+                $operation->returns,
+                new BooleanType(),
+            )
+                ->mapErr(fn(TypeMismatch $cause) => new TypeMismatch(sprintf(
+                    'Lookup filter operator [%s] must return Boolean.',
+                    $operator,
+                ), [$cause]))
+                ->map(fn() => $operation));
+    }
+
+    private function columnType(LookupSource $source, string|int $column): Type
+    {
+        return $source->schema[$column] ?? new StringType();
+    }
+
+    /** @return Result<bool, Throwable> */
+    private function matchValue(
+        CsvRecord $record,
+        string|int $column,
+        Type $cellType,
+        mixed $value,
+        ResolvedOperation $operation,
+    ): Result {
+        return $this->admitCell($record, $column, $cellType)
+            ->andThen(fn(Option $cell): Result => $cell->isNone()
+                ? Ok(false)
+                : $this->evaluateBoolean($operation, $cell->unwrap(), $value));
+    }
+
+    /** @return Result<bool, Throwable> */
+    private function matchRange(
+        CsvRecord $record,
+        RangeFilter $filter,
+        Type $minimumType,
+        Type $maximumType,
+        mixed $value,
+        ResolvedOperation $minimumOperation,
+        ResolvedOperation $maximumOperation,
+    ): Result {
+        $minimum = $this->admitCell($record, $filter->minColumn, $minimumType);
+
+        if ($minimum->isErr()) {
+            return $minimum;
+        }
+
+        $maximum = $this->admitCell($record, $filter->maxColumn, $maximumType);
+
+        if ($maximum->isErr()) {
+            return $maximum;
+        }
+
+        if ($minimum->unwrap()->isNone() || $maximum->unwrap()->isNone()) {
+            return Ok(false);
+        }
+
+        $aboveMinimum = $this->evaluateBoolean($minimumOperation, $value, $minimum->unwrap()->unwrap());
+
+        if ($aboveMinimum->isErr() || $aboveMinimum->unwrap() === false) {
+            return $aboveMinimum;
+        }
+
+        return $this->evaluateBoolean($maximumOperation, $value, $maximum->unwrap()->unwrap());
+    }
+
+    /** @return Result<Option<mixed>, Throwable> */
+    private function admitCell(CsvRecord $record, string|int $column, Type $type): Result
+    {
+        return $record->has($column)
+            ? $type->coerce($record->get($column))
+            : Ok(None());
+    }
+
+    /** @return Result<bool, Throwable> */
+    private function evaluateBoolean(ResolvedOperation $operation, mixed $left, mixed $right): Result
+    {
+        /** @var Result<bool, Throwable> $result */
+        $result = $operation->evaluate($left, $right);
+
+        return $result;
+    }
+
     /**
      * Stream the file once, matching each row against the filters and folding
      * it into the aggregate — O(1) memory, no buffering of rows.
      *
-     * @param list<array{Filter, CompiledNode}> $compiledFilters
+     * @param list<CompiledFilter> $compiledFilters
      * @return Result<Option<mixed>, Throwable>
      */
     private function evaluate(LookupSource $source, Runtime $runtime, array $compiledFilters): Result
@@ -185,16 +359,12 @@ final class LookupExtension extends Extension
     }
 
     /**
-     * @param list<array{Filter, CompiledNode}> $compiledFilters
+     * @param list<CompiledFilter> $compiledFilters
      * @return list<Result<ResolvedFilter, Throwable>>
      */
     private function resolveFilters(array $compiledFilters, Runtime $runtime): array
     {
-        return map($compiledFilters, fn(array $pair): Result => ($pair[1]->evaluate)($runtime)
-            ->map(fn(Option $option) => new ResolvedFilter(
-                $pair[0],
-                $option->unwrapOr(null),
-            )));
+        return map($compiledFilters, fn(CompiledFilter $filter): Result => $filter->resolve($runtime));
     }
 
     /**
