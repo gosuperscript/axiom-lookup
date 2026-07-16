@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
-use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Source;
-use Superscript\Monads\Result\Result;
 
-use function Superscript\Monads\Result\Ok;
-
+/**
+ * Matches a value against a `[min, max)` band described by two columns.
+ *
+ * The lower `>=` and upper `<` operations are bound from Axiom's composed
+ * dialect against the declared types of the value, minimum, and maximum.
+ */
 final readonly class RangeFilter implements Filter
 {
     public function __construct(
@@ -18,22 +19,4 @@ final readonly class RangeFilter implements Filter
         public string|int $maxColumn,
         public Source $value,
     ) {}
-
-    /** @return Result<bool, \Throwable> */
-    public function matches(CsvRecord $record, mixed $value, OperatorOverloader $operatorOverloader): Result
-    {
-        if (! $record->has($this->minColumn) || ! $record->has($this->maxColumn)) {
-            return Ok(false);
-        }
-
-        $minValue = $record->get($this->minColumn);
-        $maxValue = $record->get($this->maxColumn);
-
-        // [min, max) range
-        if (is_numeric($value) && is_numeric($minValue) && is_numeric($maxValue)) {
-            return Ok($value >= $minValue && $value < $maxValue);
-        }
-
-        return Ok($value >= $minValue && $value < $maxValue);
-    }
 }

@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
-use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Source;
-use Superscript\Monads\Result\Result;
 
+/**
+ * Matches a single column against a comparison value.
+ *
+ * LookupExtension resolves the operator once against the column type from
+ * LookupSource::$schema (String by default) and the compiled value's type.
+ * Evaluation therefore uses exactly the same dialect operation as an Axiom
+ * InfixExpression, including extension-owned rules and diagnostics.
+ */
 final readonly class ValueFilter implements Filter
 {
     public function __construct(
@@ -16,14 +21,4 @@ final readonly class ValueFilter implements Filter
         public Source $value,
         public string $operator = '==',
     ) {}
-
-    /** @return Result<bool, \Throwable> */
-    public function matches(CsvRecord $record, mixed $value, OperatorOverloader $operatorOverloader): Result
-    {
-        return $operatorOverloader->evaluate(
-            $record->get($this->column),
-            $value,
-            $this->operator
-        )->map(fn (mixed $result): bool => (bool) $result);
-    }
 }

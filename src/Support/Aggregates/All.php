@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
 use Superscript\Axiom\Lookup\CsvRecord;
+
 use function Psl\Vec\map;
 
 final readonly class All implements Aggregate

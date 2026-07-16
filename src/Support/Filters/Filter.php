@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
-use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Axiom\Operators\OperatorOverloader;
 use Superscript\Axiom\Source;
-use Superscript\Monads\Result\Result;
-use Throwable;
 
+/**
+ * A data-only row predicate description. LookupExtension compiles its value
+ * Source and binds its operators from Axiom's composed dialect before any row
+ * is read.
+ */
 interface Filter
 {
-    public Source $value {get;}
-
-    /** @return Result<bool, Throwable> */
-    public function matches(CsvRecord $record, mixed $value, OperatorOverloader $operatorOverloader): Result;
+    public Source $value {
+        get;
+    }
 }

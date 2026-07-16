@@ -12,11 +12,6 @@
   "minMsi": 100,
   "mutators": {
     "@default": true,
-    "TrueValue": {
-      "ignoreSourceCodeByRegex": [
-        ".*match\\s*\\(true\\).*",
-      ],
-    },
     "Ternary": {
       "ignoreSourceCodeByRegex": [
         ".*hasHeader \\? \\$reader->getRecords\\(\\) : \\$reader->getRecords\\(\\[\\]\\).*",
@@ -24,7 +19,7 @@
     },
     "Break_": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
+        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
       ],
     },
     "FalseValue": {
@@ -33,49 +28,14 @@
         ".*if \\(\\$stream === false\\).*",
       ],
     },
-    "CastBool": {
-      "ignoreSourceCodeByRegex": [
-        ".*\\(bool\\) \\$result.*",
-      ],
-    },
-    "LogicalAnd": {
-      "ignoreSourceCodeByRegex": [
-        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
-      ],
-    },
-    "LogicalAndAllSubExprNegation": {
-      "ignoreSourceCodeByRegex": [
-        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
-      ],
-    },
-    "LogicalAndNegation": {
-      "ignoreSourceCodeByRegex": [
-        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
-      ],
-    },
-    "LogicalAndSingleSubExprNegation": {
-      "ignoreSourceCodeByRegex": [
-        ".*is_numeric\\(\\$value\\) && is_numeric\\(\\$minValue\\) && is_numeric\\(\\$maxValue\\).*",
-      ],
-    },
-    "GreaterThanOrEqualTo": {
-      "ignoreSourceCodeByRegex": [
-        ".*return Ok\\(\\$value >= \\$minValue && \\$value < \\$maxValue\\);.*",
-      ],
-    },
-    "LessThan": {
-      "ignoreSourceCodeByRegex": [
-        ".*return Ok\\(\\$value >= \\$minValue && \\$value < \\$maxValue\\);.*",
-      ],
-    },
     "Finally_": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
+        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
       ],
     },
     "UnwrapFinally": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupResolver::resolve",
+        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
       ],
     },
   },
