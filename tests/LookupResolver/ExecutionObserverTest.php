@@ -19,7 +19,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Axiom\Lookup\Tests\Fixtures\SpyInspector;
+use Superscript\Axiom\Lookup\Tests\Fixtures\SpyObserver;
 use Superscript\Axiom\Sources\StaticSource;
 
 #[CoversClass(LookupExtension::class)]
@@ -30,29 +30,28 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
-class ResolutionInspectorTest extends TestCase
+final class ExecutionObserverTest extends TestCase
 {
     private Filesystem $filesystem;
 
-    private SpyInspector $inspector;
+    private SpyObserver $observer;
 
     protected function setUp(): void
     {
-        $this->inspector = new SpyInspector();
+        $this->observer = new SpyObserver();
 
         $adapter = new LocalFilesystemAdapter(__DIR__ . '/../Fixtures');
         $this->filesystem = new Filesystem($adapter);
     }
 
-    private function execute(LookupSource $source, bool $withInspector = true): void
+    private function execute(LookupSource $source, bool $withObserver = true): void
     {
         $expression = new Expression(
             $source,
-            inspector: $withInspector ? $this->inspector : null,
             dialect: Dialect::core()->with(new LookupExtension($this->filesystem)),
         );
 
-        $expression->compile()->unwrap()();
+        $expression->compile()->unwrap()(observer: $withObserver ? $this->observer : null);
     }
 
     /**
@@ -73,7 +72,7 @@ class ResolutionInspectorTest extends TestCase
     {
         $this->execute($this->lookup());
 
-        $this->assertSame('users.csv', $this->inspector->annotations['label']);
+        $this->assertSame('users.csv', $this->observer->annotations['label']);
     }
 
     #[Test]
@@ -81,7 +80,7 @@ class ResolutionInspectorTest extends TestCase
     {
         $this->execute($this->lookup(aggregate: 'first'));
 
-        $this->assertSame('first', $this->inspector->annotations['aggregate']);
+        $this->assertSame('first', $this->observer->annotations['aggregate']);
     }
 
     #[Test]
@@ -89,7 +88,7 @@ class ResolutionInspectorTest extends TestCase
     {
         $this->execute($this->lookup(columns: ['age', 'city']));
 
-        $this->assertSame(['age', 'city'], $this->inspector->annotations['columns']);
+        $this->assertSame(['age', 'city'], $this->observer->annotations['columns']);
     }
 
     #[Test]
@@ -97,11 +96,28 @@ class ResolutionInspectorTest extends TestCase
     {
         $this->execute($this->lookup(columns: []));
 
-        $this->assertArrayNotHasKey('columns', $this->inspector->annotations);
+        $this->assertArrayNotHasKey('columns', $this->observer->annotations);
     }
 
     #[Test]
-    public function it_works_without_inspector(): void
+    public function it_attributes_annotations_to_the_lookup_source(): void
+    {
+        $this->execute($this->lookup());
+
+        $annotations = array_values(array_filter(
+            $this->observer->annotated,
+            fn($event): bool => $event->node->sourceType === LookupSource::class,
+        ));
+
+        $this->assertCount(3, $annotations);
+        $this->assertSame(['aggregate', 'columns', 'label'], array_column($annotations, 'key'));
+        foreach ($annotations as $event) {
+            $this->assertSame(LookupSource::class, $event->node->sourceType);
+        }
+    }
+
+    #[Test]
+    public function it_works_without_an_observer(): void
     {
         $source = $this->lookup();
 

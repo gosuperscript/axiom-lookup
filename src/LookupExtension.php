@@ -297,10 +297,10 @@ final class LookupExtension extends Extension
      */
     private function evaluate(LookupSource $source, Runtime $runtime, array $compiledFilters): Result
     {
-        $runtime->inspector?->annotate('aggregate', $source->aggregate);
+        $runtime->annotate('aggregate', $source->aggregate);
 
         if ($source->columns !== []) {
-            $runtime->inspector?->annotate('columns', $source->columns);
+            $runtime->annotate('columns', $source->columns);
         }
 
         $stream = null;
@@ -362,7 +362,7 @@ final class LookupExtension extends Extension
                     return Ok(Some($result));
                 });
 
-            $runtime->inspector?->annotate('label', $source->path);
+            $runtime->annotate('label', $source->path);
 
             return $result;
         } catch (Throwable $e) {

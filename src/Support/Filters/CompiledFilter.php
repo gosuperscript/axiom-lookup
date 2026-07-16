@@ -24,7 +24,7 @@ final readonly class CompiledFilter
     /** @return Result<ResolvedFilter, Throwable> */
     public function resolve(Runtime $runtime): Result
     {
-        return ($this->value->evaluate)($runtime)
+        return $this->value->evaluate($runtime)
             ->map(fn(Option $option) => new ResolvedFilter(
                 $option->unwrapOr(null),
                 $this->matches,
