@@ -152,7 +152,7 @@ $books       = $program->call(['category' => 'Books']);
 
 Filters are serialisable descriptions. During compilation, `LookupExtension` compiles each filter value and binds its operator from the expression's composed dialect. The resulting operation is reused for every row; filters do not contain a resolver and do not reimplement comparisons at runtime.
 
-CSV cells are strings by default. Add a `schema` entry when a filter should admit a cell as another Axiom type. For example, numeric ordering needs a numeric column declaration:
+CSV cells are strings by default. Add a `schema` entry when a filter should read a cell as another Axiom type. For example, numeric ordering needs a numeric column declaration:
 
 ```php
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
@@ -185,7 +185,7 @@ $lookup = new LookupSource(
 );
 ```
 
-Extension-owned operators work without lookup-specific integration. If an extension in the dialect owns `equals-ignore-case` for `String × String → Boolean`, a `ValueFilter(..., 'equals-ignore-case')` binds that exact rule. Unknown operators, incompatible operands, and operators that do not return `Boolean` are compile errors. A cell that cannot be admitted by its declared type is a runtime boundary error rather than a silent string comparison.
+Extension-owned operators work without lookup-specific integration. If an extension in the dialect owns `equals-ignore-case` for `String × String → Boolean`, a `ValueFilter(..., 'equals-ignore-case')` binds that exact rule. Unknown operators, incompatible operands, and operators that do not return `Boolean` are compile errors. A cell that cannot be coerced to its declared type is a runtime boundary error rather than a silent string comparison.
 
 ### Other Storage Options
 

@@ -737,7 +737,7 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function declared_numeric_columns_are_admitted_before_comparison(): void
+    public function declared_numeric_columns_are_coerced_before_comparison(): void
     {
         $source = $this->lookup(
             path: 'users.csv',

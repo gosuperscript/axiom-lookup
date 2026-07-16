@@ -217,7 +217,7 @@ final class LookupExtension extends Extension
         mixed $value,
         ResolvedOperation $operation,
     ): Result {
-        return $this->admitCell($record, $column, $cellType)
+        return $this->readCellAs($record, $column, $cellType)
             ->andThen(fn(Option $cell): Result => $cell->isNone()
                 ? Ok(false)
                 : $this->evaluateBoolean($operation, $cell->unwrap(), $value));
@@ -233,13 +233,13 @@ final class LookupExtension extends Extension
         ResolvedOperation $minimumOperation,
         ResolvedOperation $maximumOperation,
     ): Result {
-        $minimum = $this->admitCell($record, $filter->minColumn, $minimumType);
+        $minimum = $this->readCellAs($record, $filter->minColumn, $minimumType);
 
         if ($minimum->isErr()) {
             return $minimum;
         }
 
-        $maximum = $this->admitCell($record, $filter->maxColumn, $maximumType);
+        $maximum = $this->readCellAs($record, $filter->maxColumn, $maximumType);
 
         if ($maximum->isErr()) {
             return $maximum;
@@ -259,7 +259,7 @@ final class LookupExtension extends Extension
     }
 
     /** @return Result<Option<mixed>, Throwable> */
-    private function admitCell(CsvRecord $record, string|int $column, Type $type): Result
+    private function readCellAs(CsvRecord $record, string|int $column, Type $type): Result
     {
         return $record->has($column)
             ? $type->coerce($record->get($column))
