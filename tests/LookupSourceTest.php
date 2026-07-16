@@ -741,9 +741,9 @@ class LookupSourceTest extends TestCase
             {
                 return [
                     Operator::infix('equals-ignore-case')
-                        ->signature(new StringType(), new StringType())
+                        ->takes(new StringType(), new StringType())
                         ->returns(new BooleanType())
-                        ->evaluate(fn(string $left, string $right): bool => strcasecmp($left, $right) === 0),
+                        ->evaluatesWith(fn(string $left, string $right): bool => strcasecmp($left, $right) === 0),
                 ];
             }
         };
