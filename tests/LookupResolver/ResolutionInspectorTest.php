@@ -10,8 +10,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
@@ -19,6 +21,7 @@ use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Lookup\Tests\Fixtures\SpyInspector;
 use Superscript\Axiom\Sources\StaticSource;
 
+#[CoversClass(LookupExtension::class)]
 #[CoversClass(LookupSource::class)]
 #[UsesClass(CsvRecord::class)]
 #[UsesClass(ValueFilter::class)]
@@ -41,7 +44,11 @@ class ResolutionInspectorTest extends TestCase
 
     private function execute(LookupSource $source, bool $withInspector = true): void
     {
-        $expression = new Expression($source, inspector: $withInspector ? $this->inspector : null);
+        $expression = new Expression(
+            $source,
+            inspector: $withInspector ? $this->inspector : null,
+            dialect: Dialect::core()->with(new LookupExtension($this->filesystem)),
+        );
 
         $expression->compile()->unwrap()();
     }
@@ -53,7 +60,6 @@ class ResolutionInspectorTest extends TestCase
     {
         return new LookupSource(
             path: 'users.csv',
-            filesystem: $this->filesystem,
             filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: $columns,
             aggregate: $aggregate,
@@ -97,7 +103,8 @@ class ResolutionInspectorTest extends TestCase
     {
         $source = $this->lookup();
 
-        $result = (new Expression($source))->compile()->unwrap()();
+        $result = (new Expression($source, dialect: Dialect::core()->with(new LookupExtension($this->filesystem))))
+            ->compile()->unwrap()();
 
         $this->assertTrue($result->isOk());
         $this->assertSame('30', $result->unwrap()->unwrap());

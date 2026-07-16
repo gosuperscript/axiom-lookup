@@ -19,7 +19,7 @@
     },
     "Break_": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupSource::evaluate",
+        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
       ],
     },
     "FalseValue": {
@@ -60,12 +60,12 @@
     },
     "Finally_": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupSource::evaluate",
+        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
       ],
     },
     "UnwrapFinally": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupSource::evaluate",
+        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
       ],
     },
   },

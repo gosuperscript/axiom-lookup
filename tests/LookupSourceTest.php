@@ -12,8 +12,10 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
@@ -27,6 +29,7 @@ use Superscript\Axiom\Types\UnknownType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 
+#[CoversClass(LookupExtension::class)]
 #[CoversClass(LookupSource::class)]
 #[CoversClass(ValueFilter::class)]
 #[CoversClass(RangeFilter::class)]
@@ -63,11 +66,9 @@ class LookupSourceTest extends TestCase
         string|int|null $aggregateColumn = null,
         string $delimiter = ',',
         bool $hasHeader = true,
-        ?FilesystemOperator $filesystem = null,
     ): LookupSource {
         return new LookupSource(
             path: $path,
-            filesystem: $filesystem ?? $this->filesystem,
             filters: $filters,
             columns: $columns,
             aggregate: $aggregate,
@@ -79,13 +80,27 @@ class LookupSourceTest extends TestCase
 
     /**
      * Compile the lookup as a whole expression and invoke it — the boundary
-     * the old resolver crossed, now expressed as compile-then-run.
+     * the old resolver crossed, now expressed as compile-then-run. The
+     * filesystem the read needs is injected through the LookupExtension, so
+     * the LookupSource itself stays pure, serialisable data.
      *
      * @return Result<Option<mixed>, \Throwable>
      */
     private function execute(LookupSource $source): Result
     {
-        return (new Expression($source))->compile()->unwrap()();
+        return $this->expression($source)->compile()->unwrap()();
+    }
+
+    /**
+     * Build the expression the way a host would: the filesystem the read
+     * needs is injected through the LookupExtension on the dialect, so the
+     * LookupSource itself stays pure, serialisable data.
+     */
+    private function expression(LookupSource $source, ?FilesystemOperator $filesystem = null): Expression
+    {
+        $dialect = Dialect::core()->with(new LookupExtension($filesystem ?? $this->filesystem));
+
+        return new Expression($source, dialect: $dialect);
     }
 
     private function filter(string|int $column, Source $value, string $operator = '=='): ValueFilter
@@ -708,10 +723,9 @@ class LookupSourceTest extends TestCase
             columns: ['value'],
             aggregate: 'sum',
             aggregateColumn: 'value',
-            filesystem: $tempFilesystem,
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source, $tempFilesystem)->compile()->unwrap()();
 
         unlink($tempFile);
 
@@ -774,7 +788,7 @@ class LookupSourceTest extends TestCase
             aggregateColumn: 'salary',
         );
 
-        $program = (new Expression($source))->compile()->unwrap();
+        $program = $this->expression($source)->compile()->unwrap();
 
         $this->assertInstanceOf(OptionType::class, $program->returns);
         $this->assertInstanceOf($expectedInner, $program->returns->inner);
@@ -807,7 +821,7 @@ class LookupSourceTest extends TestCase
             columns: ['age'],
         );
 
-        $result = (new Expression($source))->compile();
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
     }
@@ -984,10 +998,9 @@ class LookupSourceTest extends TestCase
             path: 'test.csv',
             filters: [],
             columns: ['name'],
-            filesystem: $mockFilesystem,
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source, $mockFilesystem)->compile()->unwrap()();
 
         $this->assertTrue($result->isErr());
         $error = $result->unwrapErr();

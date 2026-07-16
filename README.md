@@ -9,6 +9,7 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 - **Explicit Filter API**: `ValueFilter` and `RangeFilter` for clear, self-documenting code
 - **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
 - **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
+- **Serialisable descriptions**: a `LookupSource` is pure data — the filesystem lives on the `LookupExtension`, so a lookup tree can be persisted and loaded later
 - **Honest Types**: numeric aggregates declare `Option<Number>`; every other aggregate declares `Option<Unknown>` (a raw CSV cell), bridged downstream with a `Coerce`/`Ascription`
 - **Early Exit Optimization**: `first` aggregate stops reading after first match
 - **Flexible Storage**: Support for local files, S3, and other storage backends via Flysystem
@@ -22,15 +23,14 @@ composer require gosuperscript/axiom-lookup
 
 ## Quick Start
 
-`LookupSource` is a `TypedSource`: it compiles itself, carrying both the type
-the lookup produces and the streaming evaluation that produces it. There is no
-resolver to register — the Flysystem operator is a constructor dependency, and
-you compile the source into a `Program` and invoke it.
+A `LookupSource` is pure, serialisable data — the file path, the filters, the columns, the aggregate. The filesystem the read needs is injected into a `LookupExtension`, which you compose onto the dialect; the source itself carries no live collaborator. Compile the source into a `Program`, then invoke it.
 
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Sources\StaticSource;
@@ -39,101 +39,105 @@ use Superscript\Axiom\Sources\StaticSource;
 $adapter = new LocalFilesystemAdapter('/path/to/data');
 $filesystem = new Filesystem($adapter);
 
-// Define a lookup source; the filesystem is a constructor dependency
+// Compose the lookup extension onto the dialect — this is where the filesystem lives
+$dialect = Dialect::core()->with(new LookupExtension($filesystem));
+
+// Define a lookup source — pure data, no filesystem
 $lookup = new LookupSource(
     path: 'products.csv',
-    filesystem: $filesystem,
     filters: [new ValueFilter('category', new StaticSource('Electronics'))],
     columns: ['price'],
 );
 
 // Compile once, then invoke the program like a function
-$program = (new Expression($lookup))->compile()->unwrap();
+$program = (new Expression($lookup, dialect: $dialect))->compile()->unwrap();
 $result = $program(); // Result<Option<mixed>, Throwable>
 ```
 
 ## Using Different Storage Backends
 
-The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends. The filesystem operator is passed to each `LookupSource`, so you choose the right adapter when you build the source.
+The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends. The filesystem operator is passed to the `LookupExtension`, so you choose the right adapter once when you compose the dialect — every `LookupSource` compiled with it reads through that filesystem.
 
 ### Local Filesystem
 
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Sources\StaticSource;
 
 $adapter = new LocalFilesystemAdapter('/path/to/data');
 $filesystem = new Filesystem($adapter);
+$dialect = Dialect::core()->with(new LookupExtension($filesystem));
 
 $lookup = new LookupSource(
     path: 'users.csv',
-    filesystem: $filesystem,
     filters: [new ValueFilter('status', new StaticSource('active'))],
     columns: ['name', 'email'],
 );
 
-$result = (new Expression($lookup))->compile()->unwrap()();
+$result = (new Expression($lookup, dialect: $dialect))->compile()->unwrap()();
 ```
 
 ### Amazon S3
 
 ```php
-use League\Flysystem\Filesystem;
-use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
 use Aws\S3\S3Client;
+use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
+use League\Flysystem\Filesystem;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Sources\StaticSource;
 
 $client = new S3Client([
-    'credentials' => [
-        'key'    => 'your-key',
-        'secret' => 'your-secret',
-    ],
+    'credentials' => ['key' => 'your-key', 'secret' => 'your-secret'],
     'region' => 'us-east-1',
     'version' => 'latest',
 ]);
 
 $adapter = new AwsS3V3Adapter($client, 'your-bucket-name');
 $filesystem = new Filesystem($adapter);
+$dialect = Dialect::core()->with(new LookupExtension($filesystem));
 
 $lookup = new LookupSource(
     path: 'data/products.csv',
-    filesystem: $filesystem,
     filters: [new ValueFilter('category', new StaticSource('Books'))],
     columns: ['price'],
 );
 
-$result = (new Expression($lookup))->compile()->unwrap()();
+$result = (new Expression($lookup, dialect: $dialect))->compile()->unwrap()();
 ```
 
 ### Reusing a Program with Different Inputs
 
-A filter value is a `Source`, so it can be a `SymbolSource` supplied at call
-time. Declare the symbol's type on the `Expression`; the compiled `Program`
-then admits it at the boundary and you invoke it with per-call `bindings`:
+A filter value is a `Source`, so it can be a `SymbolSource` supplied at call time. Declare the symbol's type on the `Expression`; the compiled `Program` then admits it at the boundary and you invoke it with per-call `bindings`:
 
 ```php
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Sources\SymbolSource;
 use Superscript\Axiom\Types\StringType;
 
+$dialect = Dialect::core()->with(new LookupExtension($filesystem));
+
 // A lookup parameterised by a `category` symbol supplied at call time
 $lookup = new LookupSource(
     path: 'products.csv',
-    filesystem: $filesystem,
     filters: [new ValueFilter('category', new SymbolSource('category'))],
     columns: ['price'],
 );
 
-$program = (new Expression($lookup, declarations: ['category' => new StringType()]))
+$program = (new Expression($lookup, dialect: $dialect, declarations: ['category' => new StringType()]))
     ->compile()
     ->unwrap();
 
@@ -156,7 +160,7 @@ See the [Flysystem documentation](https://flysystem.thephpleague.com/docs/) for 
 ## Requirements
 
 - PHP 8.4+
-- gosuperscript/axiom ^0.5.0
+- gosuperscript/axiom (the typesafe compile/Program line)
 - league/csv ^9.27.0
 - league/flysystem ^3.0
 - gosuperscript/monads

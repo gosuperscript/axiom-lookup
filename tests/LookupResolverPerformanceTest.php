@@ -9,7 +9,9 @@ use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Source;
@@ -61,14 +63,15 @@ class LookupResolverPerformanceTest extends TestCase
     ): Result {
         $source = new LookupSource(
             path: $path,
-            filesystem: $this->filesystem,
             filters: $filters,
             columns: $columns,
             aggregate: $aggregate,
             aggregateColumn: $aggregateColumn,
         );
 
-        return (new Expression($source))->compile()->unwrap()();
+        $dialect = Dialect::core()->with(new LookupExtension($this->filesystem));
+
+        return (new Expression($source, dialect: $dialect))->compile()->unwrap()();
     }
 
     private function filter(string|int $column, Source $value, string $operator = '=='): ValueFilter
