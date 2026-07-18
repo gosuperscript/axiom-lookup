@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
 use Superscript\Axiom\Extension;
@@ -37,6 +38,8 @@ use Superscript\Axiom\Types\Type;
 use Superscript\Axiom\Types\UnknownType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
+
+use function Superscript\Monads\Result\Err;
 
 #[CoversClass(LookupExtension::class)]
 #[CoversClass(LookupSource::class)]
@@ -757,6 +760,36 @@ class LookupSourceTest extends TestCase
             ->compile()->unwrap()();
 
         $this->assertSame('30', $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function an_expected_filter_operation_failure_remains_the_program_error(): void
+    {
+        $failure = new RuntimeException('comparison failed');
+        $fragile = new class ($failure) extends Extension {
+            public function __construct(private RuntimeException $failure) {}
+
+            public function operators(): array
+            {
+                return [
+                    Operator::infix('fragile-equals')
+                        ->takes(new StringType(), new StringType())
+                        ->returns(new BooleanType())
+                        ->evaluatesWith(fn(string $left, string $right): Result => Err($this->failure)),
+                ];
+            }
+        };
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('ALICE'), 'fragile-equals')],
+            columns: ['age'],
+        );
+
+        $result = $this->expression($source, extensions: [$fragile])
+            ->compile()->unwrap()();
+
+        $this->assertTrue($result->isErr());
+        $this->assertSame($failure, $result->unwrapErr());
     }
 
     #[Test]

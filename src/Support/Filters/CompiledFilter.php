@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Support\Filters;
 
 use Closure;
-use Superscript\Axiom\CompiledNode;
+use Superscript\Axiom\CompiledSource;
 use Superscript\Axiom\Lookup\CsvRecord;
-use Superscript\Axiom\Runtime;
-use Superscript\Monads\Option\Option;
+use Superscript\Axiom\SourceEvaluation;
 use Superscript\Monads\Result\Result;
 use Throwable;
 
@@ -17,17 +16,15 @@ final readonly class CompiledFilter
 {
     /** @param Closure(CsvRecord, mixed): Result<bool, Throwable> $matches */
     public function __construct(
-        private CompiledNode $value,
+        private CompiledSource $value,
         private Closure $matches,
     ) {}
 
-    /** @return Result<ResolvedFilter, Throwable> */
-    public function resolve(Runtime $runtime): Result
+    public function resolve(SourceEvaluation $evaluation): ResolvedFilter
     {
-        return $this->value->evaluate($runtime)
-            ->map(fn(Option $option) => new ResolvedFilter(
-                $option->unwrapOr(null),
-                $this->matches,
-            ));
+        return new ResolvedFilter(
+            $evaluation->value($this->value),
+            $this->matches,
+        );
     }
 }
