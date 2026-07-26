@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
-use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
 
 final readonly class Sum implements Aggregate
 {
+    use RequiresAggregateColumn;
+
     private function __construct(
         private float $sum,
         private bool $hasValues,
@@ -19,13 +20,16 @@ final readonly class Sum implements Aggregate
         return new self(0.0, false);
     }
 
+    public function kind(): AggregateKind
+    {
+        return AggregateKind::Sum;
+    }
+
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
-        if ($aggregateColumn === null) {
-            throw new RuntimeException("aggregateColumn is required when using 'sum' aggregate");
-        }
+        $column = $this->requireColumn($aggregateColumn);
 
-        $value = $record->getNumeric($aggregateColumn);
+        $value = $record->getNumeric($column);
         if ($value !== null) {
             return new self($this->sum + $value, true);
         }

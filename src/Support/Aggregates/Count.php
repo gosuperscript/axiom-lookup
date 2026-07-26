@@ -17,6 +17,11 @@ final readonly class Count implements Aggregate
         return new self(0);
     }
 
+    public function kind(): AggregateKind
+    {
+        return AggregateKind::Count;
+    }
+
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
         return new self($this->count + 1);

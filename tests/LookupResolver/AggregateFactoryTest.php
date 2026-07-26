@@ -10,7 +10,9 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Superscript\Axiom\Lookup\Support\Aggregates\Aggregate;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
+use Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind;
 use Superscript\Axiom\Lookup\Support\Aggregates\All;
 use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
 use Superscript\Axiom\Lookup\Support\Aggregates\Count;
@@ -21,6 +23,7 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Min;
 use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 
 #[CoversClass(AggregateFactory::class)]
+#[UsesClass(AggregateKind::class)]
 #[UsesClass(First::class)]
 #[UsesClass(Last::class)]
 #[UsesClass(Count::class)]
@@ -48,6 +51,14 @@ class AggregateFactoryTest extends TestCase
     public function it_creates_aggregate(string $name, string $class): void
     {
         self::assertInstanceOf($class, AggregateFactory::for($name));
+    }
+
+    #[Test]
+    public function every_name_the_vocabulary_lists_is_a_name_the_factory_accepts(): void
+    {
+        foreach (AggregateKind::names() as $name) {
+            self::assertInstanceOf(Aggregate::class, AggregateFactory::for($name));
+        }
     }
 
     #[Test]

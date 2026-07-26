@@ -22,6 +22,11 @@ final readonly class All implements Aggregate
         return new self([]);
     }
 
+    public function kind(): AggregateKind
+    {
+        return AggregateKind::All;
+    }
+
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
         return new self([

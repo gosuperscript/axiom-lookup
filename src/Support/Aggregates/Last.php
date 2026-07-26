@@ -17,6 +17,11 @@ final readonly class Last implements Aggregate
         return new self(null);
     }
 
+    public function kind(): AggregateKind
+    {
+        return AggregateKind::Last;
+    }
+
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
         // Always keep the latest record

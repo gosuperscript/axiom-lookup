@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\CoversTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind;
 use Superscript\Axiom\Lookup\Support\Aggregates\All;
 use Superscript\Axiom\Lookup\Support\Aggregates\Avg;
 use Superscript\Axiom\Lookup\Support\Aggregates\Count;
@@ -27,6 +30,8 @@ use Superscript\Axiom\Lookup\Support\Aggregates\Sum;
 #[CoversClass(Min::class)]
 #[CoversClass(Max::class)]
 #[CoversClass(All::class)]
+#[CoversClass(AggregateKind::class)]
+#[CoversTrait(\Superscript\Axiom\Lookup\Support\Aggregates\RequiresAggregateColumn::class)]
 #[UsesClass(CsvRecord::class)]
 class AggregateTest extends TestCase
 {
@@ -416,45 +421,51 @@ class AggregateTest extends TestCase
     }
 
     #[Test]
-    public function sum_aggregate_requires_aggregate_column(): void
+    public function the_vocabulary_lists_every_kind_in_declaration_order(): void
     {
-        $state = Sum::initial();
-        $record = CsvRecord::from(['price' => '10']);
+        self::assertSame(
+            ['first', 'last', 'count', 'sum', 'avg', 'min', 'max', 'all'],
+            AggregateKind::names(),
+        );
 
-        $this->expectException(RuntimeException::class);
+        // Read off the cases, so a kind added to the enum joins the list
+        // without anyone remembering to write it down twice.
+        self::assertSame(
+            array_map(fn(AggregateKind $kind): string => $kind->value, AggregateKind::cases()),
+            AggregateKind::names(),
+        );
+    }
 
-        $state->process($record, null);
+    /**
+     * Every kind, so a kind added without a column verdict fails here.
+     *
+     * @return iterable<string, array{AggregateKind}>
+     */
+    public static function kinds(): iterable
+    {
+        foreach (AggregateKind::cases() as $kind) {
+            yield $kind->value => [$kind];
+        }
     }
 
     #[Test]
-    public function avg_aggregate_requires_aggregate_column(): void
+    #[DataProvider('kinds')]
+    public function what_a_kind_says_about_needing_a_column_is_what_processing_does(AggregateKind $kind): void
     {
-        $state = Avg::initial();
-        $record = CsvRecord::from(['score' => '10']);
-
-        $this->expectException(RuntimeException::class);
-
-        $state->process($record, null);
-    }
-
-    #[Test]
-    public function min_aggregate_requires_aggregate_column(): void
-    {
-        $state = Min::initial();
         $record = CsvRecord::from(['price' => '10']);
+        $state = $kind->initial();
+
+        self::assertSame($kind, $state->kind());
+
+        if (!$kind->requiresColumn()) {
+            $state->process($record, null);
+            self::assertTrue(true, "{$kind->value} processes a record without an aggregateColumn");
+
+            return;
+        }
 
         $this->expectException(RuntimeException::class);
-
-        $state->process($record, null);
-    }
-
-    #[Test]
-    public function max_aggregate_requires_aggregate_column(): void
-    {
-        $state = Max::initial();
-        $record = CsvRecord::from(['price' => '10']);
-
-        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("aggregateColumn is required when using '{$kind->value}' aggregate");
 
         $state->process($record, null);
     }
