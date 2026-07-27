@@ -57,6 +57,7 @@ use function Superscript\Monads\Result\Err;
 #[UsesClass(Aggregates\Max::class)]
 #[UsesClass(Aggregates\All::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
+#[UsesClass(Aggregates\AggregateKind::class)]
 class LookupSourceTest extends TestCase
 {
     private Filesystem $filesystem;

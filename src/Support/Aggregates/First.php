@@ -17,6 +17,11 @@ final readonly class First implements Aggregate
         return new self(null);
     }
 
+    public function kind(): AggregateKind
+    {
+        return AggregateKind::First;
+    }
+
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
         // Keep the first record, ignore subsequent ones

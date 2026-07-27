@@ -5,7 +5,7 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 ## Features
 
 - **Memory-Efficient Streaming**: O(1) memory complexity - processes records one-at-a-time
-- **Eight Aggregate Functions**: `first`, `last`, `min`, `max`, `count`, `sum`, `avg`, `all`
+- **Eight Aggregate Functions**: `first`, `last`, `min`, `max`, `count`, `sum`, `avg`, `all` — enumerable at runtime, see [Aggregates](#aggregates)
 - **Explicit Filter API**: `ValueFilter` and `RangeFilter` for clear, self-documenting code
 - **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
 - **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
@@ -55,6 +55,36 @@ $lookup = new LookupSource(
 $program = (new Expression($lookup, dialect: $dialect))->compile()->unwrap();
 $result = $program(); // Result<Option<mixed>, Throwable>
 ```
+
+## Aggregates
+
+`LookupSource::$aggregate` is one of the names `AggregateKind` defines, and that enum is the only place the list lives. Ask it rather than restating the list:
+
+```php
+use Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind;
+
+AggregateKind::names();
+// ['first', 'last', 'count', 'sum', 'avg', 'min', 'max', 'all']
+
+AggregateKind::Sum->requiresColumn();    // true
+AggregateKind::Count->requiresColumn();  // false
+```
+
+`requiresColumn()` is the difference between the aggregates that read whole records and those that read one column's values. `first`, `last`, `count` and `all` count matching records or extract the requested columns from them, so they need no `aggregateColumn`. `sum`, `avg`, `min` and `max` need one — there is no sum of a whole record — and refuse without it:
+
+```php
+$lookup = new LookupSource(path: 'products.csv', aggregate: 'sum');
+$program = (new Expression($lookup, dialect: $dialect))->compile()->unwrap();
+$program();
+// Err(RuntimeException: aggregateColumn is required when using 'sum' aggregate)
+// — raised by the first matching record, so a lookup that matches nothing
+//   still returns None. Check the kind up front to catch it either way.
+
+new LookupSource(path: 'products.csv', aggregate: 'sum', aggregateColumn: 'price');
+// ✓
+```
+
+So a caller validating a lookup before running it, or offering a column picker only where a column means something, reads both facts from the kind instead of keeping its own copy in step with this package. Given an aggregate state, `$aggregate->kind()` gets back to the same answers.
 
 ## Using Different Storage Backends
 

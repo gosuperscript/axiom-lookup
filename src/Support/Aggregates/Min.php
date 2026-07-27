@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Support\Aggregates;
 
-use RuntimeException;
 use Superscript\Axiom\Lookup\CsvRecord;
 
 final readonly class Min implements Aggregate
 {
+    use RequiresAggregateColumn;
+
     /**
      * @param mixed $minValue
      */
@@ -22,13 +23,16 @@ final readonly class Min implements Aggregate
         return new self(null, null);
     }
 
+    public function kind(): AggregateKind
+    {
+        return AggregateKind::Min;
+    }
+
     public function process(CsvRecord $record, string|int|null $aggregateColumn): self
     {
-        if ($aggregateColumn === null) {
-            throw new RuntimeException("aggregateColumn is required when using 'min' aggregate");
-        }
+        $column = $this->requireColumn($aggregateColumn);
 
-        $value = $record->get($aggregateColumn);
+        $value = $record->get($column);
 
         if ($value !== null && ($this->minValue === null || $value < $this->minValue)) {
             return new self($record, $value);

@@ -30,6 +30,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind::class)]
 final class ExecutionObserverTest extends TestCase
 {
     private Filesystem $filesystem;
