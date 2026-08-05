@@ -86,6 +86,48 @@ new LookupSource(path: 'products.csv', aggregate: 'sum', aggregateColumn: 'price
 
 So a caller validating a lookup before running it, or offering a column picker only where a column means something, reads both facts from the kind instead of keeping its own copy in step with this package. Given an aggregate state, `$aggregate->kind()` gets back to the same answers.
 
+## Indexed lookups over sorted files
+
+Streaming reads every row, so a lookup into a very large file (say, a
+postcode-keyed risk table with millions of rows) pays for the whole file even
+when it needs one block of it. If the file is **sorted by one column**, declare
+that column as the lookup's `index` and an `==` filter on it will binary-search
+the file by byte offset instead — a handful of seeks rather than a full pass:
+
+```php
+$lookup = new LookupSource(
+    path: 'postcode_risk_scores.csv',
+    filters: [new ValueFilter('postcode', new StaticSource('SW1A 1AA'))],
+    columns: ['flood', 'subsidence'],
+    index: 'postcode', // the file is sorted by this column
+);
+```
+
+The declaration is a physical contract about the file, which the writer of the
+file must uphold (validate it when the file is produced or uploaded):
+
+- rows are sorted by the index column in **byte order** (`strcmp`);
+- one record per line — no embedded newlines in quoted cells;
+- the index column is left undeclared in `$schema` (raw strings), since a
+  numerically-typed column compares numerically and byte order cannot navigate it.
+
+The seek is an I/O strategy, never a semantic one. Every record it yields still
+passes through the full filter pipeline, all aggregates fold the same block
+they would have met in the stream, and anything that rules the seek out — no
+`==` filter on the index column, a non-string filter value, a non-seekable
+stream, a column missing from the header — quietly falls back to the ordinary
+full stream, which computes the same result.
+
+> **Remote storage:** the seek needs a seekable stream, and remote object
+> storage (S3) hands out non-seekable ones. A host reading from a bucket must
+> wrap its filesystem in a read-through local cache for the index to engage —
+> otherwise every lookup silently falls back to the full stream. Execution observers see which
+path answered a given invocation as the `scan` annotation: `index-seek` or
+`full-stream`.
+
+Dynamic filter values ride the index too: a nested lookup or bound symbol that
+resolves to a present string is a perfectly good seek target.
+
 ## Using Different Storage Backends
 
 The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends. The filesystem operator is passed to the `LookupExtension`, so you choose the right adapter once when you compose the dialect — every `LookupSource` compiled with it reads through that filesystem.

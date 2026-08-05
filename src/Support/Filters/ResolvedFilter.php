@@ -11,12 +11,13 @@ use Throwable;
 
 /**
  * A dialect-bound row predicate paired with the value its Source produced
- * once, before the row loop.
+ * once, before the row loop. The value is readable so the extension can steer
+ * I/O by it (the indexed seek targets an `==` filter's resolved string).
  */
 final readonly class ResolvedFilter
 {
     public function __construct(
-        private mixed $value,
+        public mixed $value,
         /** @var Closure(CsvRecord, mixed): Result<bool, Throwable> */
         private Closure $matches,
     ) {}

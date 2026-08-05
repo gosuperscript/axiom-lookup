@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
-use League\Csv\Reader;
 use League\Flysystem\FilesystemOperator;
-use RuntimeException;
 use Superscript\Axiom\BoundOperation;
 use Superscript\Axiom\CompiledSource;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Extension;
+use Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\IndexedCsvLookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
@@ -39,12 +42,15 @@ use function Superscript\Monads\Result\attempt;
 use function Superscript\Monads\Result\Ok;
 
 /**
- * The lookup package's contribution to a {@see \Superscript\Axiom\Dialect}:
+ * The lookup package's contribution to a {@see Dialect}:
  * the source compiler that turns a data-only {@see LookupSource} into a
  * streaming {@see CompiledSource}. The {@see FilesystemOperator} the read needs
  * is injected here — the live collaborator the old container wired into the
  * resolver — and captured in the compiled program, so the persisted
- * `LookupSource` tree carries no filesystem of its own.
+ * `LookupSource` tree carries no filesystem of its own. The reading itself
+ * goes through a {@see LookupSourceReader}; by default a
+ * {@see StrategyLookupSourceReader} that seeks sorted indexed files and
+ * streams everything else.
  *
  * ```php
  * $dialect = Dialect::core()->with(new LookupExtension($filesystem));
@@ -60,7 +66,15 @@ use function Superscript\Monads\Result\Ok;
  */
 final class LookupExtension extends Extension
 {
-    public function __construct(private readonly FilesystemOperator $filesystem) {}
+    private readonly LookupSourceReader $reader;
+
+    public function __construct(FilesystemOperator $filesystem, ?LookupSourceReader $reader = null)
+    {
+        $this->reader = $reader ?? new StrategyLookupSourceReader(
+            new IndexedCsvLookupSourceReader($filesystem),
+            new FullCsvScanLookupSourceReader($filesystem),
+        );
+    }
 
     public function sourceCompilers(): array
     {
@@ -86,7 +100,7 @@ final class LookupExtension extends Extension
 
         return $compilation->custom(
             $this->resultType($source),
-            fn(SourceEvaluation $evaluation): Result => $this->evaluate($source, $evaluation, $compiledFilters),
+            fn (SourceEvaluation $evaluation): Result => $this->evaluate($source, $evaluation, $compiledFilters),
         );
     }
 
@@ -98,9 +112,9 @@ final class LookupExtension extends Extension
     private function resultType(LookupSource $source): Type
     {
         return match ($source->aggregate) {
-            'count', 'sum', 'avg' => new OptionType(new NumberType()),
-            'all' => new ListType(new UnknownType()),
-            default => new OptionType(new UnknownType()),
+            'count', 'sum', 'avg' => new OptionType(new NumberType),
+            'all' => new ListType(new UnknownType),
+            default => new OptionType(new UnknownType),
         };
     }
 
@@ -135,7 +149,7 @@ final class LookupExtension extends Extension
 
         return new CompiledFilter(
             $value,
-            fn(CsvRecord $record, mixed $resolved): Result => $this->matchValue(
+            fn (CsvRecord $record, mixed $resolved): Result => $this->matchValue(
                 $record,
                 $filter->column,
                 $cellType,
@@ -158,7 +172,7 @@ final class LookupExtension extends Extension
 
         return new CompiledFilter(
             $value,
-            fn(CsvRecord $record, mixed $resolved): Result => $this->matchRange(
+            fn (CsvRecord $record, mixed $resolved): Result => $this->matchRange(
                 $record,
                 $filter,
                 $minimumType,
@@ -177,7 +191,7 @@ final class LookupExtension extends Extension
         Type $right,
     ): BoundOperation {
         $operation = $compilation->infix($left, $operator, $right);
-        $assignable = TypeRelations::isTypeAssignableTo($operation->returns, new BooleanType());
+        $assignable = TypeRelations::isTypeAssignableTo($operation->returns, new BooleanType);
 
         if ($assignable->isErr()) {
             $compilation->reject(new TypeMismatch(sprintf(
@@ -191,7 +205,7 @@ final class LookupExtension extends Extension
 
     private function columnType(LookupSource $source, string|int $column): Type
     {
-        return $source->schema[$column] ?? new StringType();
+        return $source->schema[$column] ?? new StringType;
     }
 
     /** @return Result<bool, Throwable> */
@@ -203,7 +217,7 @@ final class LookupExtension extends Extension
         BoundOperation $operation,
     ): Result {
         return $this->readCellAs($record, $column, $cellType)
-            ->andThen(fn(Option $cell): Result => $cell->isNone()
+            ->andThen(fn (Option $cell): Result => $cell->isNone()
                 ? Ok(false)
                 : $this->evaluateBoolean($operation, $cell->unwrap(), $value));
     }
@@ -273,7 +287,7 @@ final class LookupExtension extends Extension
      * Stream the file once, matching each row against the filters and folding
      * it into the aggregate — O(1) memory, no buffering of rows.
      *
-     * @param list<CompiledFilter> $compiledFilters
+     * @param  list<CompiledFilter>  $compiledFilters
      * @return Result<mixed, Throwable>
      */
     private function evaluate(LookupSource $source, SourceEvaluation $evaluation, array $compiledFilters): Result
@@ -287,91 +301,102 @@ final class LookupExtension extends Extension
         // Child failures must reach CompiledSource's private failure channel,
         // so resolve filter values before the package-owned I/O boundary.
         $resolvedFilters = $this->resolveFilters($compiledFilters, $evaluation);
-        $stream = null;
 
-        try {
-            $records = attempt(function () use ($source, &$stream): iterable {
-                // Read the CSV/TSV file from Flysystem as a stream
-                $stream = $this->filesystem->readStream($source->path);
+        $aggregateState = attempt(fn () => AggregateFactory::for($source->aggregate));
 
-                if ($stream === false) {
-                    throw new RuntimeException("Could not open file: {$source->path}");
-                }
+        if ($aggregateState->isErr()) {
+            return $aggregateState;
+        }
 
-                // Create CSV reader from the open stream resource
-                $reader = Reader::from($stream);
-                $reader->setDelimiter($source->delimiter);
+        $aggregateState = $aggregateState->unwrap();
 
-                if ($source->hasHeader) {
-                    $reader->setHeaderOffset(0);
-                }
+        // The reader owns the file: which strategy answers (an indexed seek,
+        // the full stream) only decides where the file is read — every record
+        // it yields still passes the full filter pipeline below.
+        $records = attempt(fn (): iterable => $this->reader->findRecord(
+            $source,
+            $this->indexTarget($source, $resolvedFilters),
+            fn (string $scan) => $evaluation->annotate('scan', $scan),
+        ));
 
-                // Stream through records with memory-efficient processing
-                return $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
-            });
+        if ($records->isErr()) {
+            return $records;
+        }
 
-            if ($records->isErr()) {
-                return $records;
+        foreach ($records->unwrap() as $record) {
+            /** @var array<string, mixed> $record */
+            $csvRecord = CsvRecord::from($record);
+            $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
+
+            if ($filterResult->isErr()) {
+                return $filterResult;
             }
 
-            $aggregateState = attempt(fn() => AggregateFactory::for($source->aggregate));
-
-            if ($aggregateState->isErr()) {
-                return $aggregateState;
+            if ($filterResult->mapOr(false, fn (bool $v) => $v) === false) {
+                continue;
             }
 
-            $aggregateState = $aggregateState->unwrap();
+            $processed = attempt(fn () => $aggregateState->process($csvRecord, $source->aggregateColumn));
 
-            foreach ($records->unwrap() as $record) {
-                /** @var array<string, mixed> $record */
-                $csvRecord = CsvRecord::from($record);
-                $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
-
-                if ($filterResult->isErr()) {
-                    return $filterResult;
-                }
-
-                if ($filterResult->mapOr(false, fn(bool $v) => $v) === false) {
-                    continue;
-                }
-
-                $processed = attempt(fn() => $aggregateState->process($csvRecord, $source->aggregateColumn));
-
-                if ($processed->isErr()) {
-                    return $processed;
-                }
-
-                $aggregateState = $processed->unwrap();
-
-                if ($aggregateState->canEarlyExit()) {
-                    break;
-                }
+            if ($processed->isErr()) {
+                return $processed;
             }
 
-            $result = $aggregateState->finalize($source->columns);
+            $aggregateState = $processed->unwrap();
 
-            $evaluation->annotate('label', $source->path);
-
-            return Ok($result);
-        } finally {
-            // Ensure stream is always closed
-            if (is_resource($stream)) {
-                fclose($stream);
+            if ($aggregateState->canEarlyExit()) {
+                break;
             }
         }
+
+        $result = $aggregateState->finalize($source->columns);
+
+        $evaluation->annotate('label', $source->path);
+
+        return Ok($result);
     }
 
     /**
-     * @param list<CompiledFilter> $compiledFilters
+     * @param  list<CompiledFilter>  $compiledFilters
      * @return list<ResolvedFilter>
      */
     private function resolveFilters(array $compiledFilters, SourceEvaluation $evaluation): array
     {
-        return map($compiledFilters, fn(CompiledFilter $filter) => $filter->resolve($evaluation));
+        return map($compiledFilters, fn (CompiledFilter $filter) => $filter->resolve($evaluation));
     }
 
     /**
-     * @param array<ResolvedFilter> $resolvedFilters
+     * The value an indexed reader may seek on: a `==` ValueFilter must target
+     * the declared index column with a present string, and the column must
+     * read as a raw string — the byte order the sort contract promises. Null
+     * means no filter pins the index down and the whole file must speak.
+     *
+     * @param  list<ResolvedFilter>  $resolvedFilters
+     */
+    private function indexTarget(LookupSource $source, array $resolvedFilters): ?string
+    {
+        $target = null;
+        $position = 0;
+
+        foreach ($source->filters as $filter) {
+            $resolved = $resolvedFilters[$position++];
+
+            if (
+                $filter instanceof ValueFilter
+                && $filter->operator === '=='
+                && $filter->column === $source->index
+                && $this->columnType($source, $filter->column)::class === StringType::class
+                && is_string($resolved->value)
+            ) {
+                $target = $resolved->value;
+            }
+        }
+
+        return $target;
+    }
+
+    /**
+     * @param  array<ResolvedFilter>  $resolvedFilters
      * @return Result<bool, Throwable>
      */
     private function matchesAllFilters(CsvRecord $record, array $resolvedFilters): Result
@@ -383,7 +408,7 @@ final class LookupExtension extends Extension
                 return $result;
             }
 
-            if ($result->mapOr(false, fn(bool $v) => $v) === false) {
+            if ($result->mapOr(false, fn (bool $v) => $v) === false) {
                 return Ok(false);
             }
         }

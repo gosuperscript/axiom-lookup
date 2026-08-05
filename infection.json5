@@ -17,9 +17,57 @@
         ".*hasHeader \\? \\$reader->getRecords\\(\\) : \\$reader->getRecords\\(\\[\\]\\).*",
       ],
     },
+    // IndexedScan's bisection is an I/O strategy with a designed fail-safe:
+    // a probe that cannot be trusted only widens the linearly-scanned window
+    // (an unreadable key closes the range from below, and the final scan
+    // re-checks every key), so mutants on the probe arithmetic, the window
+    // tuning, and the early break degrade to a slower scan with an identical
+    // result. IndexedScanTest sweeps every key of its fixtures and asserts
+    // exact yields; these survivors are equivalent by construction, not gaps.
     "Break_": {
       "ignore": [
         "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
+        "Superscript\\Axiom\\Lookup\\Support\\CsvIndexedScan::block",
+      ],
+    },
+    "While_": {
+      "ignoreSourceCodeByRegex": [
+        ".*while \\(\\$upper - \\$lower > \\$this->window\\).*",
+      ],
+    },
+    "Plus": {
+      "ignoreSourceCodeByRegex": [
+        ".*intdiv\\(\\$lower \\+ \\$upper, 2\\).*",
+      ],
+    },
+    "IncrementInteger": {
+      "ignoreSourceCodeByRegex": [
+        ".*private int \\$window = 4096.*",
+        ".*fseek\\(\\$stream, 0, SEEK_END\\);.*",
+        ".*intdiv\\(\\$lower \\+ \\$upper, 2\\).*",
+      ],
+    },
+    "DecrementInteger": {
+      "ignoreSourceCodeByRegex": [
+        ".*private int \\$window = 4096.*",
+        ".*fseek\\(\\$stream, 0, SEEK_END\\);.*",
+        ".*intdiv\\(\\$lower \\+ \\$upper, 2\\).*",
+      ],
+    },
+    "FunctionCallRemoval": {
+      "ignoreSourceCodeByRegex": [
+        ".*fseek\\(\\$stream, 0, SEEK_END\\);.*",
+        ".*fseek\\(\\$stream, \\$probe\\);.*",
+        // Prompt cleanup only: an unclosed stream is reclaimed by refcounting
+        // the moment the generator or scope goes away.
+        ".*fclose\\(\\$stream\\);.*",
+      ],
+    },
+    // ftell() only returns false on a detached handle; the cast narrows the
+    // type for analysis and never changes a live value.
+    "CastInt": {
+      "ignoreSourceCodeByRegex": [
+        ".*\\(int\\) ftell\\(\\$stream\\).*",
       ],
     },
     "FalseValue": {
@@ -30,12 +78,14 @@
     },
     "Finally_": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
+        "Superscript\\Axiom\\Lookup\\Readers\\FullCsvScanLookupSourceReader::readAndClose",
+        "Superscript\\Axiom\\Lookup\\Readers\\IndexedCsvLookupSourceReader::readAndClose",
       ],
     },
     "UnwrapFinally": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
+        "Superscript\\Axiom\\Lookup\\Readers\\FullCsvScanLookupSourceReader::readAndClose",
+        "Superscript\\Axiom\\Lookup\\Readers\\IndexedCsvLookupSourceReader::readAndClose",
       ],
     },
   },

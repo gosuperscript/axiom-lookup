@@ -25,6 +25,11 @@ use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\IndexedCsvLookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader;
+use Superscript\Axiom\Lookup\Support\CsvIndexedScan;
 use Superscript\Axiom\Operators\Operator;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\Sources\Coerce;
@@ -48,6 +53,10 @@ use function Superscript\Monads\Result\Err;
 #[CoversClass(CompiledFilter::class)]
 #[CoversClass(ResolvedFilter::class)]
 #[UsesClass(CsvRecord::class)]
+#[UsesClass(CsvIndexedScan::class)]
+#[UsesClass(StrategyLookupSourceReader::class)]
+#[UsesClass(IndexedCsvLookupSourceReader::class)]
+#[UsesClass(FullCsvScanLookupSourceReader::class)]
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\Last::class)]
 #[UsesClass(Aggregates\Count::class)]
@@ -82,6 +91,7 @@ class LookupSourceTest extends TestCase
         string $delimiter = ',',
         bool $hasHeader = true,
         array $schema = [],
+        string|int|null $index = null,
     ): LookupSource {
         return new LookupSource(
             path: $path,
@@ -92,6 +102,7 @@ class LookupSourceTest extends TestCase
             delimiter: $delimiter,
             hasHeader: $hasHeader,
             schema: $schema,
+            index: $index,
         );
     }
 
@@ -1340,6 +1351,358 @@ class LookupSourceTest extends TestCase
         $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
+    }
+
+    /**
+     * A sorted fixture large enough that the indexed path really bisects
+     * (well past the scan's default window). Every tenth code carries a
+     * three-row block so the equal-key block spans more than one record.
+     */
+    private static function sortedCodes(): string
+    {
+        $lines = ['code,tier,value'];
+
+        for ($i = 0; $i < 2000; $i++) {
+            $code = sprintf('P%04d', $i);
+            $lines[] = "{$code},silver,{$i}";
+
+            if ($i % 10 === 0) {
+                $lines[] = "{$code},gold," . ($i + 1);
+                $lines[] = "{$code},silver," . ($i + 2);
+            }
+        }
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /** @return iterable<string, array{string, string|int|null, string}> */
+    public static function indexedAggregates(): iterable
+    {
+        // A duplicated block, a single row, the last row, and a miss — folded
+        // by every aggregate shape the scan feeds.
+        foreach (['P0150', 'P0777', 'P1999', 'P2500'] as $target) {
+            yield "first of {$target}" => ['first', null, $target];
+            yield "last of {$target}" => ['last', null, $target];
+            yield "count of {$target}" => ['count', null, $target];
+            yield "all of {$target}" => ['all', null, $target];
+            yield "sum of {$target}" => ['sum', 'value', $target];
+        }
+    }
+
+    #[Test]
+    #[DataProvider('indexedAggregates')]
+    public function an_indexed_lookup_computes_exactly_what_streaming_computes(
+        string $aggregate,
+        string|int|null $aggregateColumn,
+        string $target,
+    ): void {
+        $this->filesystem->write('sorted_codes.csv', self::sortedCodes());
+
+        $streamed = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [$this->filter('code', new StaticSource($target))],
+            columns: ['value'],
+            aggregate: $aggregate,
+            aggregateColumn: $aggregateColumn,
+        ));
+        $indexed = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [$this->filter('code', new StaticSource($target))],
+            columns: ['value'],
+            aggregate: $aggregate,
+            aggregateColumn: $aggregateColumn,
+            index: 'code',
+        ));
+
+        $this->assertTrue($indexed->isOk());
+        $this->assertEquals($streamed->unwrap(), $indexed->unwrap());
+
+        $this->filesystem->delete('sorted_codes.csv');
+    }
+
+    #[Test]
+    public function an_indexed_lookup_finds_a_block_deep_in_the_file(): void
+    {
+        $this->filesystem->write('sorted_codes.csv', self::sortedCodes());
+
+        $result = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [$this->filter('code', new StaticSource('P0150'))],
+            columns: ['value'],
+            aggregate: 'all',
+            index: 'code',
+        ));
+
+        $this->assertSame(['150', '151', '152'], $result->unwrap()->unwrap());
+
+        $this->filesystem->delete('sorted_codes.csv');
+    }
+
+    #[Test]
+    public function an_indexed_lookup_applies_the_remaining_filters_to_the_block(): void
+    {
+        $this->filesystem->write('sorted_codes.csv', self::sortedCodes());
+
+        // The same lookup with the tier filter on either side of the index
+        // filter: the pairing of a filter with its resolved value must not
+        // depend on where the index filter sits.
+        $tierFirst = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [
+                $this->filter('tier', new StaticSource('gold')),
+                $this->filter('code', new StaticSource('P0150')),
+            ],
+            columns: ['value'],
+            aggregate: 'all',
+            index: 'code',
+        ));
+        $tierLast = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [
+                $this->filter('code', new StaticSource('P0150')),
+                $this->filter('tier', new StaticSource('silver')),
+            ],
+            columns: ['value'],
+            aggregate: 'all',
+            index: 'code',
+        ));
+
+        $this->assertSame(['151'], $tierFirst->unwrap()->unwrap());
+        $this->assertSame(['150', '152'], $tierLast->unwrap()->unwrap());
+
+        $this->filesystem->delete('sorted_codes.csv');
+    }
+
+    #[Test]
+    public function an_index_without_an_equality_filter_streams_normally(): void
+    {
+        $this->filesystem->write('sorted_codes.csv', self::sortedCodes());
+
+        $result = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [$this->filter('code', new StaticSource(['P0003', 'P0007']), 'in')],
+            columns: ['value'],
+            aggregate: 'all',
+            index: 'code',
+        ));
+
+        $this->assertSame(['3', '7'], $result->unwrap()->unwrap());
+
+        $this->filesystem->delete('sorted_codes.csv');
+    }
+
+    #[Test]
+    public function an_index_on_a_numerically_typed_column_streams_normally(): void
+    {
+        // A declared Number column compares numerically; byte order cannot
+        // navigate that, so the index is ignored and the stream answers.
+        $this->filesystem->write('sorted_numbers.csv', "code,value\n0001,one\n0002,two\n0003,three\n");
+
+        $result = $this->execute($this->lookup(
+            path: 'sorted_numbers.csv',
+            filters: [$this->filter('code', new StaticSource(2))],
+            columns: ['value'],
+            schema: self::numbers('code'),
+            index: 'code',
+        ));
+
+        $this->assertSame('two', $result->unwrap()->unwrap());
+
+        $this->filesystem->delete('sorted_numbers.csv');
+    }
+
+    #[Test]
+    public function a_dynamic_string_filter_value_can_drive_the_index(): void
+    {
+        // A nested lookup resolves to a present string, which is a perfectly
+        // good seek target: dynamic values ride the index too.
+        $this->filesystem->write(
+            'users_by_city.csv',
+            "city,name\nChicago,Diana\nLA,Bob\nLA,Eve\nNYC,Alice\nNYC,Charlie\n",
+        );
+
+        $cityOfBob = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Bob'))],
+            columns: ['city'],
+        );
+
+        $result = $this->execute($this->lookup(
+            path: 'users_by_city.csv',
+            filters: [$this->filter(
+                'city',
+                new Coerce(new OptionType(new StringType()), $cityOfBob),
+            )],
+            columns: ['name'],
+            aggregate: 'all',
+            index: 'city',
+        ));
+
+        $this->assertSame(['Bob', 'Eve'], $result->unwrap()->unwrap());
+
+        $this->filesystem->delete('users_by_city.csv');
+    }
+
+    #[Test]
+    public function an_absent_dynamic_filter_value_returns_none_with_an_index(): void
+    {
+        // The nested lookup resolves to no value at all — not a string — so
+        // the seek declines and the stream answers: no row matches.
+        $noneSource = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('NonExistent'))],
+            columns: ['city'],
+        );
+
+        $result = $this->execute($this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter(
+                'city',
+                new Coerce(new OptionType(new StringType()), $noneSource),
+            )],
+            columns: ['name'],
+            index: 'city',
+        ));
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+    }
+
+    #[Test]
+    public function an_index_left_untargeted_by_any_filter_streams_normally(): void
+    {
+        $this->filesystem->write('sorted_codes.csv', self::sortedCodes());
+
+        $result = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [$this->filter('tier', new StaticSource('gold'))],
+            columns: ['value'],
+            index: 'code',
+        ));
+
+        $this->assertSame('1', $result->unwrap()->unwrap());
+
+        $this->filesystem->delete('sorted_codes.csv');
+    }
+
+    #[Test]
+    public function an_index_column_absent_from_the_file_matches_nothing(): void
+    {
+        $this->filesystem->write('sorted_codes.csv', self::sortedCodes());
+
+        $result = $this->execute($this->lookup(
+            path: 'sorted_codes.csv',
+            filters: [$this->filter('postcode', new StaticSource('P0001'))],
+            columns: ['value'],
+            index: 'postcode',
+        ));
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+
+        $this->filesystem->delete('sorted_codes.csv');
+    }
+
+    #[Test]
+    public function a_named_index_on_a_headerless_file_matches_nothing(): void
+    {
+        $result = $this->execute($this->lookup(
+            path: 'no_header.csv',
+            filters: [$this->filter('code', new StaticSource('2'))],
+            columns: [1],
+            hasHeader: false,
+            index: 'code',
+        ));
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+    }
+
+    #[Test]
+    public function duplicated_header_names_fail_identically_with_an_index(): void
+    {
+        $this->filesystem->write('duplicated_header.csv', "code,code\na,1\nb,2\n");
+
+        $streamed = $this->execute($this->lookup(
+            path: 'duplicated_header.csv',
+            filters: [$this->filter('code', new StaticSource('a'))],
+        ));
+        $indexed = $this->execute($this->lookup(
+            path: 'duplicated_header.csv',
+            filters: [$this->filter('code', new StaticSource('a'))],
+            index: 'code',
+        ));
+
+        $this->assertTrue($streamed->isErr());
+        $this->assertTrue($indexed->isErr());
+        $this->assertSame($streamed->unwrapErr()->getMessage(), $indexed->unwrapErr()->getMessage());
+
+        $this->filesystem->delete('duplicated_header.csv');
+    }
+
+    #[Test]
+    public function an_indexed_lookup_declines_a_non_seekable_stream(): void
+    {
+        // The package requires seekable streams either way — League refuses a
+        // socket — but the indexed path must decline before probing, so the
+        // error is the reader's own, not a garbled seek.
+        $fixture = __DIR__ . '/Fixtures/users.csv';
+
+        $sockets = static function () use ($fixture) {
+            $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+            assert($pair !== false);
+            [$reader, $writer] = $pair;
+            fwrite($writer, (string) file_get_contents($fixture));
+            fclose($writer);
+
+            return $reader;
+        };
+
+        $streamedFilesystem = $this->createStub(FilesystemOperator::class);
+        $streamedFilesystem->method('readStream')->willReturnCallback($sockets);
+        $indexedFilesystem = $this->createStub(FilesystemOperator::class);
+        $indexedFilesystem->method('readStream')->willReturnCallback($sockets);
+
+        $filters = [$this->filter('name', new StaticSource('Alice'))];
+        $streamed = $this->expression($this->lookup('users.csv', $filters), $streamedFilesystem)
+            ->compile()->unwrap()();
+        $indexed = $this->expression($this->lookup('users.csv', $filters, index: 'name'), $indexedFilesystem)
+            ->compile()->unwrap()();
+
+        $this->assertTrue($streamed->isErr());
+        $this->assertTrue($indexed->isErr());
+        $this->assertSame($streamed->unwrapErr()->getMessage(), $indexed->unwrapErr()->getMessage());
+    }
+
+    #[Test]
+    public function the_lookup_reads_through_an_injected_reader(): void
+    {
+        // The extension only ever asks its LookupSourceReader for records —
+        // a host can swap the whole reading strategy, and the resolved index
+        // target reaches it.
+        $reader = new class implements LookupSourceReader {
+            public ?string $value = null;
+
+            public function findRecord(LookupSource $source, ?string $value, ?\Closure $scanned = null): iterable
+            {
+                $this->value = $value;
+
+                yield ['name' => 'Alice', 'age' => '99'];
+            }
+        };
+
+        $dialect = Dialect::core()->with(new LookupExtension($this->filesystem, $reader));
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Alice'))],
+            columns: ['age'],
+            index: 'name',
+        );
+
+        $result = (new Expression($source, dialect: $dialect))->compile()->unwrap()();
+
+        $this->assertSame('99', $result->unwrap()->unwrap());
+        $this->assertSame('Alice', $reader->value);
     }
 
     #[Test]

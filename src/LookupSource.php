@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
+use League\Flysystem\FilesystemOperator;
+use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\Types\Type;
@@ -16,16 +18,17 @@ use Superscript\Axiom\Types\Type;
  *
  * The evaluation that actually opens the file and streams its rows lives in
  * {@see LookupExtension}, the source compiler a host registers with the
- * {@see \Superscript\Axiom\Dialect}. The {@see \League\Flysystem\FilesystemOperator}
+ * {@see Dialect}. The {@see FilesystemOperator}
  * the read needs is injected into that extension and captured only in the
  * compiled program, never in this description.
  */
 final readonly class LookupSource implements Source
 {
     /**
-     * @param array<Filter> $filters
-     * @param array<string|int> $columns
-     * @param array<string|int, Type> $schema
+     * @param  array<Filter>  $filters
+     * @param  array<string|int>  $columns
+     * @param  array<string|int, Type>  $schema
+     * @param  string|int|null  $index
      */
     public function __construct(
         public string $path,
@@ -36,5 +39,6 @@ final readonly class LookupSource implements Source
         public string $delimiter = ',',
         public bool $hasHeader = true,
         public array $schema = [],
+        public string|int|null $index = null,
     ) {}
 }
