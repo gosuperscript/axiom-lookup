@@ -1259,19 +1259,33 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function counting_a_declared_string_column_still_declares_a_number(): void
-    {
+    #[DataProvider('numericAggregates')]
+    public function numeric_aggregates_ignore_the_projected_columns_declared_type(
+        string $aggregate,
+        ?string $aggregateColumn,
+        int|float $expected,
+    ): void {
         $source = $this->lookup(
             path: 'users.csv',
             columns: ['name'],
-            aggregate: 'count',
+            aggregate: $aggregate,
+            aggregateColumn: $aggregateColumn,
             schema: ['name' => new StringType()],
         );
 
-        $returns = $this->expression($source)->compile()->unwrap()->returns;
+        $program = $this->expression($source)->compile()->unwrap();
 
-        $this->assertInstanceOf(OptionType::class, $returns);
-        $this->assertInstanceOf(NumberType::class, $returns->inner);
+        $this->assertInstanceOf(OptionType::class, $program->returns);
+        $this->assertInstanceOf(NumberType::class, $program->returns->inner);
+        $this->assertSame($expected, $program()->unwrap()->unwrap());
+    }
+
+    /** @return iterable<string, array{string, ?string, int|float}> */
+    public static function numericAggregates(): iterable
+    {
+        yield 'count' => ['count', null, 5];
+        yield 'sum' => ['sum', 'salary', 375000.0];
+        yield 'avg' => ['avg', 'salary', 75000.0];
     }
 
     #[Test]

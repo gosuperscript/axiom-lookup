@@ -112,11 +112,20 @@ final class LookupExtension extends Extension
      */
     private function resultType(LookupSource $source): Type
     {
+        if ($this->hasNumericResult($source)) {
+            return new OptionType(new NumberType());
+        }
+
         return match ($source->aggregate) {
-            'count', 'sum', 'avg' => new OptionType(new NumberType()),
             'all' => new ListType($this->projectedType($source)),
             default => new OptionType($this->projectedType($source)),
         };
+    }
+
+    /** Numeric aggregates construct a number rather than projecting a cell. */
+    private function hasNumericResult(LookupSource $source): bool
+    {
+        return in_array($source->aggregate, ['count', 'sum', 'avg'], strict: true);
     }
 
     /**
@@ -327,6 +336,10 @@ final class LookupExtension extends Extension
      */
     private function admitProjection(LookupSource $source, mixed $projected): Result
     {
+        if ($this->hasNumericResult($source)) {
+            return Ok($projected);
+        }
+
         $column = $this->projectedColumn($source);
 
         if ($column === null || !isset($source->schema[$column])) {
