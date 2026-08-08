@@ -28,6 +28,7 @@ use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Operators\Operator;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\Sources\Coerce;
+use Superscript\Axiom\Sources\InfixExpression;
 use Superscript\Axiom\Sources\StaticSource;
 use Superscript\Axiom\Types\BooleanType;
 use Superscript\Axiom\Types\ListType;
@@ -115,7 +116,7 @@ class LookupSourceTest extends TestCase
      */
     /** @param list<Extension> $extensions */
     private function expression(
-        LookupSource $source,
+        Source $source,
         ?FilesystemOperator $filesystem = null,
         array $extensions = [],
     ): Expression {
@@ -1139,6 +1140,264 @@ class LookupSourceTest extends TestCase
 
         $this->assertInstanceOf(ListType::class, $returns);
         $this->assertInstanceOf(UnknownType::class, $returns->type);
+    }
+
+    #[Test]
+    public function a_list_of_an_undeclared_column_cannot_be_compared_with_intersects(): void
+    {
+        $lookup = $this->lookup(
+            path: 'industries.csv',
+            filters: [$this->filter('Trade', new StaticSource('Access Control Manufacturing'))],
+            columns: ['Manual Work Question'],
+            aggregate: 'all',
+        );
+
+        $result = $this->expression(
+            new InfixExpression($lookup, 'intersects', new StaticSource(['TRUE'])),
+        )->compile();
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString(
+            "[intersects] cannot compare List<Unknown> and List<'TRUE', 1> by value equality",
+            $result->unwrapErr()->describe(),
+        );
+    }
+
+    #[Test]
+    public function a_list_of_a_declared_column_can_be_compared_with_intersects(): void
+    {
+        $lookup = $this->lookup(
+            path: 'industries.csv',
+            filters: [$this->filter('Trade', new StaticSource('Access Control Manufacturing'))],
+            columns: ['Manual Work Question'],
+            aggregate: 'all',
+            schema: ['Manual Work Question' => new StringType()],
+        );
+
+        $program = $this->expression(
+            new InfixExpression($lookup, 'intersects', new StaticSource(['TRUE'])),
+        )->compile()->unwrap();
+
+        $this->assertTrue($program()->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function all_declares_a_list_of_the_projected_columns_declared_type(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            columns: ['salary'],
+            aggregate: 'all',
+            schema: self::numbers('salary'),
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertInstanceOf(ListType::class, $returns);
+        $this->assertInstanceOf(NumberType::class, $returns->type);
+    }
+
+    #[Test]
+    #[DataProvider('singleValueAggregates')]
+    public function single_value_aggregates_declare_the_projected_columns_declared_type(string $aggregate): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            columns: ['salary'],
+            aggregate: $aggregate,
+            aggregateColumn: 'salary',
+            schema: self::numbers('salary'),
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertInstanceOf(OptionType::class, $returns);
+        $this->assertInstanceOf(NumberType::class, $returns->inner);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function singleValueAggregates(): iterable
+    {
+        yield 'first' => ['first'];
+        yield 'last' => ['last'];
+        yield 'min' => ['min'];
+        yield 'max' => ['max'];
+    }
+
+    #[Test]
+    public function an_undeclared_projected_column_stays_unknown(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            columns: ['name'],
+            aggregate: 'all',
+            schema: self::numbers('salary'),
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertInstanceOf(ListType::class, $returns);
+        $this->assertInstanceOf(UnknownType::class, $returns->type);
+    }
+
+    #[Test]
+    public function projecting_several_declared_columns_stays_unknown(): void
+    {
+        // Several columns extract as a column-keyed array, not a cell, so no
+        // single column's declaration describes the result.
+        $source = $this->lookup(
+            path: 'users.csv',
+            columns: ['salary', 'age'],
+            aggregate: 'all',
+            schema: self::numbers('salary', 'age'),
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertInstanceOf(ListType::class, $returns);
+        $this->assertInstanceOf(UnknownType::class, $returns->type);
+    }
+
+    #[Test]
+    public function counting_a_declared_string_column_still_declares_a_number(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            columns: ['name'],
+            aggregate: 'count',
+            schema: ['name' => new StringType()],
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertInstanceOf(OptionType::class, $returns);
+        $this->assertInstanceOf(NumberType::class, $returns->inner);
+    }
+
+    #[Test]
+    public function a_declared_column_projects_cells_of_that_type(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('Alice'))],
+            columns: ['salary'],
+            schema: self::numbers('salary'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame(75000, $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function a_declared_column_projects_every_cell_of_a_total_list(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('city', new StaticSource('NYC'))],
+            columns: ['salary'],
+            aggregate: 'all',
+            schema: self::numbers('salary'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame([75000, 85000], $result->unwrap()->unwrap());
+    }
+
+    #[Test]
+    public function a_declared_string_column_projects_its_cells_as_written(): void
+    {
+        // '' and 'null' are lenient readings of absence, but they are the raw
+        // cells this file holds.
+        $this->filesystem->write('raw_cells.csv', "key,label\n,blank\nnull,literal-null\n");
+        $source = $this->lookup(
+            path: 'raw_cells.csv',
+            columns: ['key'],
+            aggregate: 'all',
+            schema: ['key' => new StringType()],
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame(['', 'null'], $result->unwrap()->unwrap());
+
+        $this->filesystem->delete('raw_cells.csv');
+    }
+
+    #[Test]
+    public function a_cell_that_breaks_its_columns_declaration_fails_the_lookup(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('city', new StaticSource('NYC'))],
+            columns: ['name'],
+            schema: self::numbers('name'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->assertSame(
+            'Column [name] of [users.csv] is declared Number, but a matching row holds [\'Alice\'].',
+            $result->unwrapErr()->getMessage(),
+        );
+    }
+
+    #[Test]
+    public function an_absent_cell_of_a_declared_column_cannot_enter_a_total_list(): void
+    {
+        $this->filesystem->write('empty_score.csv', "id,score\n1,\n");
+        $source = $this->lookup(
+            path: 'empty_score.csv',
+            columns: ['score'],
+            aggregate: 'all',
+            schema: self::numbers('score'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->assertSame(
+            'Column [score] of [empty_score.csv] is declared Number, but a matching row has no value for it.',
+            $result->unwrapErr()->getMessage(),
+        );
+
+        $this->filesystem->delete('empty_score.csv');
+    }
+
+    #[Test]
+    public function an_absent_cell_of_a_declared_column_is_absence_for_a_single_value(): void
+    {
+        $this->filesystem->write('empty_score.csv', "id,score\n1,\n");
+        $source = $this->lookup(
+            path: 'empty_score.csv',
+            columns: ['score'],
+            schema: self::numbers('score'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+
+        $this->filesystem->delete('empty_score.csv');
+    }
+
+    #[Test]
+    public function a_lookup_matching_nothing_is_absent_even_with_a_declared_column(): void
+    {
+        $source = $this->lookup(
+            path: 'users.csv',
+            filters: [$this->filter('name', new StaticSource('NonExistent'))],
+            columns: ['salary'],
+            schema: self::numbers('salary'),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
     }
 
     #[Test]

@@ -19,12 +19,14 @@ use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\SourceCompilation;
 use Superscript\Axiom\SourceEvaluation;
+use Superscript\Axiom\Exceptions\TransformValueException;
 use Superscript\Axiom\Types\BooleanType;
 use Superscript\Axiom\Types\ListType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
 use Superscript\Axiom\Types\StringType;
 use Superscript\Axiom\Types\Type;
+use Superscript\Axiom\Types\TypeDescriber;
 use Superscript\Axiom\Types\TypeMismatch;
 use Superscript\Axiom\Types\TypeRelations;
 use Superscript\Axiom\Types\UnknownType;
@@ -32,10 +34,12 @@ use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 use Throwable;
 
+use function Psl\Iter\first;
 use function Psl\Type\instance_of;
 use function Psl\Vec\map;
 use function Superscript\Monads\Option\None;
 use function Superscript\Monads\Result\attempt;
+use function Superscript\Monads\Result\Err;
 use function Superscript\Monads\Result\Ok;
 
 /**
@@ -51,12 +55,23 @@ use function Superscript\Monads\Result\Ok;
  * $program = (new Expression($lookupSource, dialect: $dialect))->compile()->unwrap();
  * ```
  *
- * The compiled source's type is deliberately honest about what a CSV can
- * promise: `count`/`sum`/`avg` are numeric by construction, so they declare
- * `Option<Number>`; `all` is a total collection and declares `List<Unknown>`;
- * every other aggregate hands back raw CSV data whose type is genuinely
- * unknowable at compile time, so it declares `Option<Unknown>`. A downstream
- * consumer bridges `Unknown` with an explicit `Coerce`/`Ascription`.
+ * The compiled source's type is only ever as strong as the file's own
+ * promise. `count`/`sum`/`avg` are numeric by construction, so they declare
+ * `Option<Number>` whatever the file says. Every other aggregate hands back
+ * cells, and a cell is typed only where {@see LookupSource::$schema} declares
+ * its column: projecting the single column `Product Group`, declared
+ * `String`, makes `all` return `List<String>` and `first` return
+ * `Option<String>`. An undeclared column — or a projection of several columns
+ * or of the whole row, which yields a column-keyed array rather than a cell —
+ * stays `Unknown`, and a downstream consumer bridges it with an explicit
+ * `Coerce`/`Ascription`.
+ *
+ * A declaration is a promise the reads keep: every cell of a declared column
+ * is admitted through that type before it leaves, so `List<String>` really
+ * holds strings and a `Number` column really yields numbers. A cell that
+ * cannot be admitted fails the whole lookup with an `Err` naming the file and
+ * the column, rather than quietly handing a liar's value to a checker that
+ * took the declaration at face value.
  */
 final class LookupExtension extends Extension
 {
@@ -92,16 +107,43 @@ final class LookupExtension extends Extension
 
     /**
      * The declared payload type. Numeric aggregates are statically known;
-     * all is a total collection; the remaining aggregates yield raw cells
-     * that cannot be typed.
+     * all is a total collection of projected cells; the remaining aggregates
+     * yield one projected cell.
      */
     private function resultType(LookupSource $source): Type
     {
         return match ($source->aggregate) {
             'count', 'sum', 'avg' => new OptionType(new NumberType()),
-            'all' => new ListType(new UnknownType()),
-            default => new OptionType(new UnknownType()),
+            'all' => new ListType($this->projectedType($source)),
+            default => new OptionType($this->projectedType($source)),
         };
+    }
+
+    /**
+     * The type of one projected cell: the declared type of the projected
+     * column, or Unknown when the column is undeclared — and Unknown too when
+     * there is no single projected column to speak of.
+     */
+    private function projectedType(LookupSource $source): Type
+    {
+        $column = $this->projectedColumn($source);
+
+        if ($column === null) {
+            return new UnknownType();
+        }
+
+        return $source->schema[$column] ?? new UnknownType();
+    }
+
+    /**
+     * The one column a projection reads, if it reads exactly one. Projecting
+     * nothing hands back the whole row and projecting several hands back a
+     * column-keyed array (see {@see CsvRecord::extract()}); neither is a cell,
+     * so neither can take a column's declared type.
+     */
+    private function projectedColumn(LookupSource $source): string|int|null
+    {
+        return count($source->columns) === 1 ? first($source->columns) : null;
     }
 
     private function compileFilter(
@@ -250,14 +292,85 @@ final class LookupExtension extends Extension
             return Ok(None());
         }
 
-        $value = $record->get($column);
+        return $this->castCell($record->get($column), $type);
+    }
 
-        // League CSV already supplies strings. Keep the default CSV domain
-        // lossless: StringType::coerce() deliberately reads '' and 'null' as
-        // absence at lenient input boundaries, but they are valid raw cells.
+    /**
+     * Admit one raw cell into a type.
+     *
+     * League CSV already supplies strings. Keep the default CSV domain
+     * lossless: StringType::coerce() deliberately reads '' and 'null' as
+     * absence at lenient input boundaries, but they are valid raw cells.
+     *
+     * @return Result<Option<mixed>, Throwable>
+     */
+    private function castCell(mixed $value, Type $type): Result
+    {
         return $type::class === StringType::class && is_string($value)
             ? $type->assert($value)
             : $type->coerce($value);
+    }
+
+    /**
+     * Make the projected value inhabit the type {@see resultType()} declared
+     * for it. Only a single projected column of a declared type is admitted;
+     * everything else is Unknown and passes through as the raw CSV data it
+     * has always been.
+     *
+     * `all` declares `List<T>`, whose items are present values, so a row whose
+     * cell reads as absent — an empty cell in a `Number` column — breaks the
+     * declaration and fails the lookup. The single-value aggregates declare
+     * `Option<T>`, where absence is a legal value, so an unmatched lookup or
+     * an absent cell is null as it always was.
+     *
+     * @return Result<mixed, Throwable>
+     */
+    private function admitProjection(LookupSource $source, mixed $projected): Result
+    {
+        $column = $this->projectedColumn($source);
+
+        if ($column === null || !isset($source->schema[$column])) {
+            return Ok($projected);
+        }
+
+        $type = $source->schema[$column];
+
+        if ($source->aggregate === 'all') {
+            /** @var list<mixed> $projected */
+            return Result::collect(map(
+                $projected,
+                fn(mixed $cell): Result => $this->admitCell($source, $column, $type, $cell)->andThen(
+                    fn(Option $value): Result => $value->mapOr(
+                        default: Err(new RuntimeException(sprintf(
+                            'Column [%s] of [%s] is declared %s, but a matching row has no value for it.',
+                            $column,
+                            $source->path,
+                            TypeDescriber::describe($type),
+                        ))),
+                        f: fn(mixed $cell): Result => Ok($cell),
+                    ),
+                ),
+            ));
+        }
+
+        return $this->admitCell($source, $column, $type, $projected)
+            ->map(fn(Option $value): mixed => $value->unwrapOr(null));
+    }
+
+    /** @return Result<Option<mixed>, Throwable> */
+    private function admitCell(LookupSource $source, string|int $column, Type $type, mixed $cell): Result
+    {
+        if ($cell === null) {
+            return Ok(None());
+        }
+
+        return $this->castCell($cell, $type)->mapErr(fn(Throwable $error) => new RuntimeException(sprintf(
+            'Column [%s] of [%s] is declared %s, but a matching row holds [%s].',
+            $column,
+            $source->path,
+            TypeDescriber::describe($type),
+            TransformValueException::format($cell),
+        ), previous: $error));
     }
 
     /** @return Result<bool, Throwable> */
@@ -348,11 +461,11 @@ final class LookupExtension extends Extension
                 }
             }
 
-            $result = $aggregateState->finalize($source->columns);
+            $result = $this->admitProjection($source, $aggregateState->finalize($source->columns));
 
             $evaluation->annotate('label', $source->path);
 
-            return Ok($result);
+            return $result;
         } finally {
             // Ensure stream is always closed
             if (is_resource($stream)) {

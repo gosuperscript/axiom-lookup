@@ -19,6 +19,14 @@ use Superscript\Axiom\Types\Type;
  * {@see \Superscript\Axiom\Dialect}. The {@see \League\Flysystem\FilesystemOperator}
  * the read needs is injected into that extension and captured only in the
  * compiled program, never in this description.
+ *
+ * `$schema` is the file's own promise about its columns: `['Product Group' =>
+ * new StringType()]` says every cell of that column is a string. It types both
+ * ends of a lookup — the comparison a filter on that column compiles (a
+ * `Number` column compares numerically, an undeclared one as text), and the
+ * type a projection of it returns. Declaring a column is additive: an
+ * undeclared column filters as text and projects as `Unknown`, exactly as a
+ * file with no schema at all always has.
  */
 final readonly class LookupSource implements Source
 {

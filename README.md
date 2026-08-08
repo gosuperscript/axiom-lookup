@@ -10,9 +10,9 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 - **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
 - **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
 - **Dialect-Native Comparisons**: Filter operators are compiled from the same composed Axiom dialect as ordinary infix expressions
-- **Typed CSV Boundaries**: Declare column types when filters need coercion or non-string operations; undeclared columns remain raw strings
+- **Typed CSV Boundaries**: Declare column types once on the file; filters compare and projections return values of the declared type, and undeclared columns remain raw strings
 - **Serialisable descriptions**: a `LookupSource` is pure data — the filesystem lives on the `LookupExtension`, so a lookup tree can be persisted and loaded later
-- **Honest Types**: numeric aggregates declare `Option<Number>`, `all` declares `List<Unknown>`, and aggregates returning one raw row/cell declare `Option<Unknown>`
+- **Honest Types**: numeric aggregates declare `Option<Number>`; every other aggregate takes the projected column's declared type — `List<String>` and `Option<String>` for a column declared `String`, `Unknown` while it is undeclared
 - **Early Exit Optimization**: `first` aggregate stops reading after first match
 - **Flexible Storage**: Support for local files, S3, and other storage backends via Flysystem
 - **PHP 8.4 Compatible**: Full compatibility with latest PHP features
@@ -217,7 +217,36 @@ $lookup = new LookupSource(
 
 Extension-owned operators work without lookup-specific integration. If an extension in the dialect owns `equals-ignore-case` for `String × String → Boolean`, a `ValueFilter(..., 'equals-ignore-case')` binds that exact rule. Unknown operators, incompatible operands, and operators that do not return `Boolean` are compile errors. A cell that cannot be coerced to its declared type is a runtime boundary error rather than a silent string comparison.
 
-An `all` lookup is a total collection: no matching rows produce `[]`, not absence. This makes a nested collection lookup usable as the right side of `in` after one explicit element-type bridge:
+## Typed projections
+
+The same `schema` types what a lookup returns. A lookup that projects exactly one column returns that column's declared type — `List<T>` under `all`, `Option<T>` under `first`, `last`, `min` and `max` — so a declared lookup is comparable without a bridge at the use site:
+
+```php
+use Superscript\Axiom\Sources\InfixExpression;
+use Superscript\Axiom\Sources\StaticSource;
+use Superscript\Axiom\Types\StringType;
+
+$groups = new LookupSource(
+    path: 'industries.csv',
+    filters: [new ValueFilter('Trade', new SymbolSource('trade'))],
+    columns: ['Product Group'],
+    aggregate: 'all',
+    schema: ['Product Group' => new StringType()],  // List<String>, not List<Unknown>
+);
+
+// Compiles: List<String> intersects List<'Shop' | 'Commercial Combined', 2>
+new InfixExpression($groups, 'intersects', new StaticSource(['Shop', 'Commercial Combined']));
+```
+
+Declaring a column is additive and it is a promise the reads keep:
+
+- An undeclared column projects `Unknown`, exactly as every lookup did before any schema existed — bridge it with an explicit `Coerce`/`Ascription`.
+- Projecting no column (the whole row) or several columns yields a column-keyed array rather than a cell, so it stays `Unknown` whatever the schema declares.
+- `count`, `sum` and `avg` are numeric by construction and declare `Option<Number>` regardless of the column they read.
+- Every projected cell of a declared column is admitted through that type: a `Number` column yields numbers, and a cell that cannot be admitted fails the lookup with an error naming the file and the column.
+- `List<T>` holds present values, so an empty cell in a declared `Number` column fails an `all` lookup; under the single-value aggregates, where the result is `Option<T>`, it reads as absence. A `String` column keeps its cells verbatim, `''` included.
+
+An `all` lookup is a total collection: no matching rows produce `[]`, not absence. This makes a nested collection lookup usable as the right side of `in`; declare the projected column, or bridge the element type explicitly:
 
 ```php
 use Superscript\Axiom\Sources\Coerce;
