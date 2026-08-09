@@ -11,11 +11,25 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\Column;
+use Superscript\Axiom\Lookup\DelimitedTable;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\Support\Results\AverageColumn;
+use Superscript\Axiom\Lookup\Support\Results\CountRows;
+use Superscript\Axiom\Lookup\Support\Results\FirstRow;
+use Superscript\Axiom\Lookup\Support\Results\MaximumRow;
+use Superscript\Axiom\Lookup\Support\Results\MinimumRow;
+use Superscript\Axiom\Lookup\Support\Results\NumericResult;
+use Superscript\Axiom\Lookup\Support\Results\ProjectedResult;
+use Superscript\Axiom\Lookup\Support\Results\RecordProjection;
+use Superscript\Axiom\Lookup\Support\Results\SumColumn;
+use Superscript\Axiom\Lookup\Support\Results\ValueProjection;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\Sources\StaticSource;
+use Superscript\Axiom\Types\NumberType;
+use Superscript\Axiom\Types\StringType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 
@@ -58,15 +72,30 @@ class LookupResolverPerformanceTest extends TestCase
         string $path,
         array $filters = [],
         array $columns = [],
-        string $aggregate = 'first',
-        string|int|null $aggregateColumn = null,
+        string $resultKind = 'first',
+        string|int|null $resultColumn = null,
     ): Result {
+        $projection = fn(): ValueProjection|RecordProjection => count($columns) === 1
+            ? new ValueProjection($columns[0])
+            : new RecordProjection(array_combine(array_map(strval(...), $columns), $columns));
+        $result = match ($resultKind) {
+            'first' => new ProjectedResult(new FirstRow(), $projection()),
+            'min' => new ProjectedResult(new MinimumRow($resultColumn ?? 'price'), $projection()),
+            'max' => new ProjectedResult(new MaximumRow($resultColumn ?? 'price'), $projection()),
+            'count' => new NumericResult(new CountRows()),
+            'sum' => new NumericResult(new SumColumn($resultColumn ?? 'price')),
+            'avg' => new NumericResult(new AverageColumn($resultColumn ?? 'price')),
+        };
         $source = new LookupSource(
-            path: $path,
+            table: new DelimitedTable($path, [
+                new Column('id', new NumberType()),
+                new Column('name', new StringType()),
+                new Column('category', new StringType()),
+                new Column('price', new NumberType()),
+                new Column('stock', new NumberType()),
+            ]),
+            result: $result,
             filters: $filters,
-            columns: $columns,
-            aggregate: $aggregate,
-            aggregateColumn: $aggregateColumn,
         );
 
         $dialect = Dialect::core()->with(new LookupExtension($this->filesystem));
@@ -88,11 +117,11 @@ class LookupResolverPerformanceTest extends TestCase
         // Measure memory before
         $memoryBefore = memory_get_usage();
 
-        // Perform a count aggregate (should use minimal memory)
+        // Perform a row count (should use minimal memory)
         $result = $this->execute(
             path: $this->largeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
-            aggregate: 'count',
+            resultKind: 'count',
         );
 
         // Measure memory after
@@ -122,12 +151,12 @@ class LookupResolverPerformanceTest extends TestCase
         // Measure memory before
         $memoryBefore = memory_get_usage();
 
-        // Perform a sum aggregate (should use minimal memory)
+        // Perform a sum fold (should use minimal memory)
         $result = $this->execute(
             path: $this->veryLargeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
-            aggregate: 'sum',
-            aggregateColumn: 'price',
+            resultKind: 'sum',
+            resultColumn: 'price',
         );
 
         // Measure memory after
@@ -149,37 +178,37 @@ class LookupResolverPerformanceTest extends TestCase
     }
 
     #[Test]
-    public function first_aggregate_has_early_exit_optimization(): void
+    public function first_row_has_early_exit_optimization(): void
     {
         // Create a CSV with 50,000 rows
         $this->createLargeCsv($this->largeCsvFilename, 50000);
 
-        // Measure time for 'first' aggregate (should be fast with early exit)
+        // Measure time for FirstRow (should be fast with early exit)
         $startTime = microtime(true);
 
         $result = $this->execute(
             path: $this->largeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
-            aggregate: 'first',
+            resultKind: 'first',
         );
 
-        $firstAggregateTime = microtime(true) - $startTime;
+        $firstRowTime = microtime(true) - $startTime;
 
         // Assert result is correct
         $this->assertTrue($result->isOk());
         $this->assertIsArray($result->unwrap()->unwrap());
 
-        // Now measure time for 'count' aggregate (must read all rows)
+        // Now measure CountRows (must read all rows)
         $startTime = microtime(true);
 
         $result = $this->execute(
             path: $this->largeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
-            aggregate: 'count',
+            resultKind: 'count',
         );
 
-        $countAggregateTime = microtime(true) - $startTime;
+        $countRowsTime = microtime(true) - $startTime;
 
         // Assert result is correct
         $this->assertTrue($result->isOk());
@@ -187,27 +216,27 @@ class LookupResolverPerformanceTest extends TestCase
         // 'first' should be significantly faster than 'count' due to early exit
         // Allow some variance but first should be at least 2x faster
         $this->assertLessThan(
-            $countAggregateTime / 2,
-            $firstAggregateTime,
-            "First aggregate ({$firstAggregateTime}s) should be faster than count ({$countAggregateTime}s) due to early exit",
+            $countRowsTime / 2,
+            $firstRowTime,
+            "First row ({$firstRowTime}s) should be faster than count ({$countRowsTime}s) due to early exit",
         );
     }
 
     #[Test]
-    public function min_max_aggregates_use_constant_memory(): void
+    public function minimum_and_maximum_selections_use_constant_memory(): void
     {
         // Create a CSV with 20,000 rows
         $this->createLargeCsv($this->largeCsvFilename, 20000);
 
-        // Measure memory for min aggregate
+        // Measure memory for minimum selection
         $memoryBefore = memory_get_usage();
 
         $result = $this->execute(
             path: $this->largeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
-            aggregate: 'min',
-            aggregateColumn: 'price',
+            resultKind: 'min',
+            resultColumn: 'price',
         );
 
         $memoryAfter = memory_get_usage();
@@ -224,18 +253,18 @@ class LookupResolverPerformanceTest extends TestCase
         $this->assertLessThan(
             5 * 1024 * 1024,
             $memoryUsed,
-            "Min aggregate memory usage ({$memoryUsed} bytes) exceeded 5MB",
+            "Minimum-row memory usage ({$memoryUsed} bytes) exceeded 5MB",
         );
 
-        // Test max aggregate as well
+        // Test maximum selection as well
         $memoryBefore = memory_get_usage();
 
         $result = $this->execute(
             path: $this->largeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['name', 'price'],
-            aggregate: 'max',
-            aggregateColumn: 'price',
+            resultKind: 'max',
+            resultColumn: 'price',
         );
 
         $memoryAfter = memory_get_usage();
@@ -250,24 +279,24 @@ class LookupResolverPerformanceTest extends TestCase
         $this->assertLessThan(
             5 * 1024 * 1024,
             $memoryUsed,
-            "Max aggregate memory usage ({$memoryUsed} bytes) exceeded 5MB",
+            "Maximum-row memory usage ({$memoryUsed} bytes) exceeded 5MB",
         );
     }
 
     #[Test]
-    public function avg_aggregate_uses_constant_memory(): void
+    public function average_fold_uses_constant_memory(): void
     {
         // Create a CSV with 30,000 rows
         $this->createLargeCsv($this->largeCsvFilename, 30000);
 
-        // Measure memory for avg aggregate
+        // Measure memory for average fold
         $memoryBefore = memory_get_usage();
 
         $result = $this->execute(
             path: $this->largeCsvFilename,
             filters: [$this->filter('category', new StaticSource('Electronics'))],
-            aggregate: 'avg',
-            aggregateColumn: 'price',
+            resultKind: 'avg',
+            resultColumn: 'price',
         );
 
         $memoryAfter = memory_get_usage();
@@ -283,7 +312,7 @@ class LookupResolverPerformanceTest extends TestCase
         $this->assertLessThan(
             5 * 1024 * 1024,
             $memoryUsed,
-            "Avg aggregate memory usage ({$memoryUsed} bytes) exceeded 5MB for 30k rows",
+            "Average-fold memory usage ({$memoryUsed} bytes) exceeded 5MB for 30k rows",
         );
     }
 
@@ -303,7 +332,7 @@ class LookupResolverPerformanceTest extends TestCase
             $result = $this->execute(
                 path: $csvFilename,
                 filters: [$this->filter('category', new StaticSource('Electronics'))],
-                aggregate: 'count',
+                resultKind: 'count',
             );
 
             $executionTime = microtime(true) - $startTime;

@@ -1,21 +1,17 @@
 # Axiom Lookup
 
-A high-performance PHP library for querying CSV/TSV files with streaming, dynamic filtering, aggregate functions, and range-based banding — packaged as a first-class Axiom source.
+A streaming Axiom source for typed lookups over CSV, TSV, and other delimited files.
 
 ## Features
 
-- **Memory-Efficient Streaming**: O(1) memory complexity - processes records one-at-a-time
-- **Eight Aggregate Functions**: `first`, `last`, `min`, `max`, `count`, `sum`, `avg`, `all` — enumerable at runtime, see [Aggregates](#aggregates)
-- **Explicit Filter API**: `ValueFilter` and `RangeFilter` for clear, self-documenting code
-- **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
-- **Dynamic Filter Resolution**: Use nested lookups and symbols as filter values
-- **Dialect-Native Comparisons**: Filter operators are compiled from the same composed Axiom dialect as ordinary infix expressions
-- **Typed CSV Boundaries**: Declare column types when filters need coercion or non-string operations; undeclared columns remain raw strings
-- **Serialisable descriptions**: a `LookupSource` is pure data — the filesystem lives on the `LookupExtension`, so a lookup tree can be persisted and loaded later
-- **Honest Types**: numeric aggregates declare `Option<Number>`, `all` declares `List<Unknown>`, and aggregates returning one raw row/cell declare `Option<Unknown>`
-- **Early Exit Optimization**: `first` aggregate stops reading after first match
-- **Flexible Storage**: Support for local files, S3, and other storage backends via Flysystem
-- **PHP 8.4 Compatible**: Full compatibility with latest PHP features
+- Streams rows with constant memory for first, last, minimum, maximum, count, sum, and average results.
+- Separates file structure (`DelimitedTable`) from result construction (`ProjectedResult` or `NumericResult`).
+- Requires a concrete type declaration for every referenced column.
+- Supports scalar and exact-record projections, including output-field aliases.
+- Compiles filter and ordering operations from the composed Axiom dialect.
+- Treats missing required cells as errors and optional cells according to `OptionType`.
+- Uses Flysystem, so the same lookup descriptions work with local, cloud, and in-memory storage.
+- Keeps lookup descriptions serializable: the filesystem is injected into `LookupExtension`, not stored in `LookupSource`.
 
 ## Installation
 
@@ -23,272 +19,232 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 composer require gosuperscript/axiom-lookup
 ```
 
-## Quick Start
-
-A `LookupSource` is pure, serialisable data — the file path, the filters, the columns, the aggregate. The filesystem the read needs is injected into a `LookupExtension`, which you compose onto the dialect; the source itself carries no live collaborator. Compile the source into a `Program`, then invoke it.
+## Quick start
 
 ```php
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\Column;
+use Superscript\Axiom\Lookup\DelimitedTable;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Axiom\Sources\StaticSource;
-
-// Create a filesystem instance (local filesystem example)
-$adapter = new LocalFilesystemAdapter('/path/to/data');
-$filesystem = new Filesystem($adapter);
-
-// Compose the lookup extension onto the dialect — this is where the filesystem lives
-$dialect = Dialect::core()->with(new LookupExtension($filesystem));
-
-// Define a lookup source — pure data, no filesystem
-$lookup = new LookupSource(
-    path: 'products.csv',
-    filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-    columns: ['price'],
-);
-
-// Compile once, then invoke the program like a function
-$program = (new Expression($lookup, dialect: $dialect))->compile()->unwrap();
-$result = $program(); // Result<Option<mixed>, Throwable>
-```
-
-## Aggregates
-
-`LookupSource::$aggregate` is one of the names `AggregateKind` defines, and that enum is the only place the list lives. Ask it rather than restating the list:
-
-```php
-use Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind;
-
-AggregateKind::names();
-// ['first', 'last', 'count', 'sum', 'avg', 'min', 'max', 'all']
-
-AggregateKind::Sum->requiresColumn();    // true
-AggregateKind::Count->requiresColumn();  // false
-```
-
-`requiresColumn()` is the difference between the aggregates that read whole records and those that read one column's values. `first`, `last`, `count` and `all` count matching records or extract the requested columns from them, so they need no `aggregateColumn`. `sum`, `avg`, `min` and `max` need one — there is no sum of a whole record — and refuse without it:
-
-```php
-$lookup = new LookupSource(path: 'products.csv', aggregate: 'sum');
-$program = (new Expression($lookup, dialect: $dialect))->compile()->unwrap();
-$program();
-// Err(RuntimeException: aggregateColumn is required when using 'sum' aggregate)
-// — raised by the first matching record, so a lookup that matches nothing
-//   still returns None. Check the kind up front to catch it either way.
-
-new LookupSource(path: 'products.csv', aggregate: 'sum', aggregateColumn: 'price');
-// ✓
-```
-
-So a caller validating a lookup before running it, or offering a column picker only where a column means something, reads both facts from the kind instead of keeping its own copy in step with this package. Given an aggregate state, `$aggregate->kind()` gets back to the same answers.
-
-## Using Different Storage Backends
-
-The library uses [Flysystem](https://flysystem.thephpleague.com/) for filesystem abstraction, enabling you to read CSV files from various storage backends. The filesystem operator is passed to the `LookupExtension`, so you choose the right adapter once when you compose the dialect — every `LookupSource` compiled with it reads through that filesystem.
-
-### Local Filesystem
-
-```php
-use League\Flysystem\Filesystem;
-use League\Flysystem\Local\LocalFilesystemAdapter;
-use Superscript\Axiom\Dialect;
-use Superscript\Axiom\Expression;
-use Superscript\Axiom\Lookup\LookupExtension;
-use Superscript\Axiom\Lookup\LookupSource;
-use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Axiom\Sources\StaticSource;
-
-$adapter = new LocalFilesystemAdapter('/path/to/data');
-$filesystem = new Filesystem($adapter);
-$dialect = Dialect::core()->with(new LookupExtension($filesystem));
-
-$lookup = new LookupSource(
-    path: 'users.csv',
-    filters: [new ValueFilter('status', new StaticSource('active'))],
-    columns: ['name', 'email'],
-);
-
-$result = (new Expression($lookup, dialect: $dialect))->compile()->unwrap()();
-```
-
-### Amazon S3
-
-```php
-use Aws\S3\S3Client;
-use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
-use League\Flysystem\Filesystem;
-use Superscript\Axiom\Dialect;
-use Superscript\Axiom\Expression;
-use Superscript\Axiom\Lookup\LookupExtension;
-use Superscript\Axiom\Lookup\LookupSource;
-use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Axiom\Sources\StaticSource;
-
-$client = new S3Client([
-    'credentials' => ['key' => 'your-key', 'secret' => 'your-secret'],
-    'region' => 'us-east-1',
-    'version' => 'latest',
-]);
-
-$adapter = new AwsS3V3Adapter($client, 'your-bucket-name');
-$filesystem = new Filesystem($adapter);
-$dialect = Dialect::core()->with(new LookupExtension($filesystem));
-
-$lookup = new LookupSource(
-    path: 'data/products.csv',
-    filters: [new ValueFilter('category', new StaticSource('Books'))],
-    columns: ['price'],
-);
-
-$result = (new Expression($lookup, dialect: $dialect))->compile()->unwrap()();
-```
-
-### Reusing a Program with Different Inputs
-
-A filter value is a `Source`, so it can be a `SymbolSource` supplied at call time. Declare the symbol's type on the `Expression`; the compiled `Program` then admits it at the boundary and you invoke it with per-call `bindings`:
-
-```php
-use Superscript\Axiom\Dialect;
-use Superscript\Axiom\Expression;
-use Superscript\Axiom\Lookup\LookupExtension;
-use Superscript\Axiom\Lookup\LookupSource;
-use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
-use Superscript\Axiom\Sources\SymbolSource;
-use Superscript\Axiom\Types\StringType;
-
-$dialect = Dialect::core()->with(new LookupExtension($filesystem));
-
-// A lookup parameterised by a `category` symbol supplied at call time
-$lookup = new LookupSource(
-    path: 'products.csv',
-    filters: [new ValueFilter('category', new SymbolSource('category'))],
-    columns: ['price'],
-);
-
-$program = (new Expression($lookup, dialect: $dialect, declarations: ['category' => new StringType()]))
-    ->compile()
-    ->unwrap();
-
-// Invoke with bindings — equivalent forms
-$electronics = $program(['category' => 'Electronics']);
-$books       = $program->call(['category' => 'Books']);
-```
-
-## Typed filters and operators
-
-Filters are serialisable descriptions. During compilation, `LookupExtension` compiles each filter value and binds its operator from the expression's composed dialect. The resulting operation is reused for every row; filters do not contain a resolver and do not reimplement comparisons at runtime.
-
-CSV cells are strings by default. Add a `schema` entry when a filter should read a cell as another Axiom type. For example, numeric ordering needs a numeric column declaration:
-
-```php
-use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\Support\Results\FirstRow;
+use Superscript\Axiom\Lookup\Support\Results\ProjectedResult;
+use Superscript\Axiom\Lookup\Support\Results\RecordProjection;
 use Superscript\Axiom\Sources\StaticSource;
 use Superscript\Axiom\Types\NumberType;
+use Superscript\Axiom\Types\StringType;
+
+$filesystem = new Filesystem(new LocalFilesystemAdapter('/path/to/data'));
+$dialect = Dialect::core()->with(new LookupExtension($filesystem));
 
 $lookup = new LookupSource(
-    path: 'users.csv',
-    filters: [new ValueFilter('age', new StaticSource(30), '>=')],
-    columns: ['name'],
-    schema: ['age' => new NumberType()],
+    table: new DelimitedTable(
+        path: 'products.csv',
+        columns: [
+            new Column('sku', new StringType()),
+            new Column('category', new StringType()),
+            new Column('price', new NumberType()),
+        ],
+    ),
+    result: new ProjectedResult(
+        rows: new FirstRow(),
+        projection: new RecordProjection([
+            'product' => 'sku',
+            'unit_price' => 'price',
+        ]),
+    ),
+    filters: [
+        new ValueFilter('category', new StaticSource('books')),
+    ],
+);
+
+$program = (new Expression($lookup, dialect: $dialect))->compile()->unwrap();
+$result = $program();
+```
+
+The projected record has the exact type `{product: String, unit_price: Number}`. Because `FirstRow` may find no matching row, the lookup declares an optional record result.
+
+## The model
+
+### Delimited tables and column declarations
+
+`DelimitedTable` owns the path, delimiter, header mode, and its partial list of column declarations. A declaration pairs a string header or integer position with an Axiom `Type`:
+
+```php
+$table = new DelimitedTable(
+    path: 'rates.tsv',
+    columns: [
+        new Column('region', new StringType()),
+        new Column('minimum', new NumberType()),
+        new Column('maximum', new NumberType()),
+        new Column('rate', new NumberType()),
+    ],
+    delimiter: "\t",
 );
 ```
 
-`RangeFilter` uses the same mechanism for its `[minimum, maximum)` test, so both bound columns should declare an orderable type:
+Every column used by a filter, projection, row ordering, sum, or average must be declared. Undeclared references are compile errors. For a table with headers, every declared header must also exist when the file is opened. A headerless table uses integer identities instead:
+
+```php
+new DelimitedTable(
+    path: 'records.csv',
+    columns: [
+        new Column(0, new StringType()),
+        new Column(2, new NumberType()),
+    ],
+    hasHeader: false,
+);
+```
+
+Declarations are partial: columns that a lookup never references do not need declarations.
+
+### Projected results
+
+A projected result combines a row selection with an explicit projection.
+
+Available row selections are:
+
+- `FirstRow`
+- `LastRow`
+- `AllRows`
+- `MinimumRow($column)`
+- `MaximumRow($column)`
+
+`ValueProjection` produces one typed scalar:
+
+```php
+result: new ProjectedResult(
+    rows: new AllRows(),
+    projection: new ValueProjection('city'),
+)
+```
+
+This declares `List<String>` when `city` is declared `String`.
+
+`RecordProjection` produces an exact record and maps output names to source identities:
+
+```php
+result: new ProjectedResult(
+    rows: new FirstRow(),
+    projection: new RecordProjection([
+        'name' => 'display_name',
+        'score' => 'ranking_score',
+    ]),
+)
+```
+
+There is no implicit whole-row result and no shape inferred from an empty or multi-item `columns` argument. The projection always states the result shape.
+
+### Numeric results
+
+Numeric results fold matching rows without a projection:
+
+```php
+use Superscript\Axiom\Lookup\Support\Results\AverageColumn;
+use Superscript\Axiom\Lookup\Support\Results\CountRows;
+use Superscript\Axiom\Lookup\Support\Results\NumericResult;
+use Superscript\Axiom\Lookup\Support\Results\SumColumn;
+
+new NumericResult(new CountRows());
+new NumericResult(new SumColumn('price'));
+new NumericResult(new AverageColumn('price'));
+```
+
+`CountRows` is total and returns `0` when no rows match. `SumColumn` and `AverageColumn` require a `Number` or `Option<Number>` declaration and return an optional number because no present values may exist.
+
+### Result discovery
+
+`LookupResultKind` is metadata for user interfaces and serializers. Runtime behavior is represented by the result objects above; the enum is not a factory.
+
+```php
+use Superscript\Axiom\Lookup\Support\Results\LookupResultKind;
+
+LookupResultKind::names();
+// ['first', 'last', 'all', 'min', 'max', 'count', 'sum', 'avg']
+
+LookupResultKind::Sum->family();          // LookupResultFamily::Numeric
+LookupResultKind::Sum->requiresColumn();  // true
+LookupResultKind::Count->requiresColumn(); // false
+```
+
+## Filters
+
+`ValueFilter` compares a declared column with a compiled Axiom source:
+
+```php
+new ValueFilter('status', new StaticSource('active'));
+new ValueFilter('score', new StaticSource(80), '>=');
+```
+
+`RangeFilter` performs a `[minimum, maximum)` comparison:
 
 ```php
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Sources\SymbolSource;
-use Superscript\Axiom\Types\NumberType;
 
-$lookup = new LookupSource(
-    path: 'premium_bands.csv',
-    filters: [new RangeFilter('minimum', 'maximum', new SymbolSource('turnover'))],
-    columns: ['premium'],
-    schema: [
-        'minimum' => new NumberType(),
-        'maximum' => new NumberType(),
-    ],
-);
+new RangeFilter('minimum', 'maximum', new SymbolSource('amount'));
 ```
 
-Extension-owned operators work without lookup-specific integration. If an extension in the dialect owns `equals-ignore-case` for `String × String → Boolean`, a `ValueFilter(..., 'equals-ignore-case')` binds that exact rule. Unknown operators, incompatible operands, and operators that do not return `Boolean` are compile errors. A cell that cannot be coerced to its declared type is a runtime boundary error rather than a silent string comparison.
+Filter values may be static values, symbols, or nested lookups. Operators are resolved from the composed dialect during compilation and must return `Boolean`.
 
-An `all` lookup is a total collection: no matching rows produce `[]`, not absence. This makes a nested collection lookup usable as the right side of `in` after one explicit element-type bridge:
+## Optional columns
+
+Optionality belongs to the declaration:
 
 ```php
-use Superscript\Axiom\Sources\Coerce;
-use Superscript\Axiom\Types\ListType;
-use Superscript\Axiom\Types\StringType;
+use Superscript\Axiom\Types\OptionType;
 
-$cities = new LookupSource(
-    path: 'allowed-cities.csv',
-    columns: ['city'],
-    aggregate: 'all',
-);
-
-$users = new LookupSource(
-    path: 'users.csv',
-    filters: [new ValueFilter(
-        'city',
-        new Coerce(new ListType(new StringType()), $cities),
-        'in',
-    )],
-    columns: ['name'],
-    aggregate: 'all',
-);
+new Column('nickname', new OptionType(new StringType()));
 ```
 
-### Other Storage Options
+- A missing or empty required value fails the lookup.
+- An absent optional filter or range value does not match.
+- Minimum and maximum row selections skip absent optional ordering values.
+- Sum and average skip absent optional numeric values.
+- A scalar single-row projection flattens “no matching row” and “absent projected value” into one optional value.
+- A record projection preserves the distinction: the record itself may be absent, while an optional field is present as `null` inside a matched record.
 
-Flysystem supports many adapters including:
-- FTP/SFTP
-- Azure Blob Storage
-- Google Cloud Storage
-- In-memory filesystem
-- And many more...
+## Storage backends
 
-See the [Flysystem documentation](https://flysystem.thephpleague.com/docs/) for more options.
+The filesystem is selected when composing the dialect:
 
-## Requirements
+```php
+$dialect = Dialect::core()->with(new LookupExtension($filesystem));
+```
 
-- PHP 8.4+
-- gosuperscript/axiom (the typesafe compile/Program line)
-- league/csv ^9.27.0
-- league/flysystem ^3.0
-- gosuperscript/monads
+Any Flysystem `FilesystemOperator` can be used, including local files, S3-compatible storage, Azure Blob Storage, SFTP, and in-memory adapters.
 
 ## Testing
 
 ```bash
-composer test          # Run all tests
-composer test:unit     # Run unit tests
-composer test:types    # Run static analysis
-composer test:infection # Run mutation tests
+composer test:types
+composer test:unit
+composer test:infection
+composer test
 ```
 
 ## Benchmarking
 
 ```bash
-composer bench              # Run all benchmarks
-composer bench:aggregate    # Test aggregate functions
-composer bench:memory       # Test memory efficiency
+composer bench
+composer bench:result
+composer bench:memory
 ```
 
-## Performance Characteristics
+The streaming implementation retains constant memory for every result except `AllRows`, which necessarily materializes all projected rows.
 
-- **Memory**: constant usage regardless of file size (single-pass streaming)
-- **Early Exit**: `first` aggregate stops after the first match
-- **Scalability**: Linear time scaling with row count
-- **Validated**: Comprehensive benchmarks with files up to 100k rows
+## Requirements
+
+- PHP 8.4+
+- `gosuperscript/axiom` ^0.6
+- `gosuperscript/monads` ^1.0
+- `league/csv` ^9.27
+- `league/flysystem` ^3.0
 
 ## License
 
-Proprietary
-
-## Credits
-
-Developed by GoSuperscript
+See the package metadata for the current license declaration.
