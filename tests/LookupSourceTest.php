@@ -17,14 +17,28 @@ use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
 use Superscript\Axiom\Extension;
 use Superscript\Axiom\Lookup\CsvRecord;
+use Superscript\Axiom\Lookup\Column;
+use Superscript\Axiom\Lookup\DelimitedTable;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
-use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\Support\Results\AllRows;
+use Superscript\Axiom\Lookup\Support\Results\AverageColumn;
+use Superscript\Axiom\Lookup\Support\Results\CountRows;
+use Superscript\Axiom\Lookup\Support\Results\FirstRow;
+use Superscript\Axiom\Lookup\Support\Results\LastRow;
+use Superscript\Axiom\Lookup\Support\Results\LookupResultKind;
+use Superscript\Axiom\Lookup\Support\Results\MaximumRow;
+use Superscript\Axiom\Lookup\Support\Results\MinimumRow;
+use Superscript\Axiom\Lookup\Support\Results\NumericResult;
+use Superscript\Axiom\Lookup\Support\Results\ProjectedResult;
+use Superscript\Axiom\Lookup\Support\Results\RecordProjection;
+use Superscript\Axiom\Lookup\Support\Results\SumColumn;
+use Superscript\Axiom\Lookup\Support\Results\ValueProjection;
 use Superscript\Axiom\Operators\Operator;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\Sources\Coerce;
@@ -34,9 +48,9 @@ use Superscript\Axiom\Types\BooleanType;
 use Superscript\Axiom\Types\ListType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
+use Superscript\Axiom\Types\RecordType;
 use Superscript\Axiom\Types\StringType;
 use Superscript\Axiom\Types\Type;
-use Superscript\Axiom\Types\UnknownType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 
@@ -49,16 +63,22 @@ use function Superscript\Monads\Result\Err;
 #[CoversClass(CompiledFilter::class)]
 #[CoversClass(ResolvedFilter::class)]
 #[UsesClass(CsvRecord::class)]
-#[UsesClass(Aggregates\First::class)]
-#[UsesClass(Aggregates\Last::class)]
-#[UsesClass(Aggregates\Count::class)]
-#[UsesClass(Aggregates\Sum::class)]
-#[UsesClass(Aggregates\Avg::class)]
-#[UsesClass(Aggregates\Min::class)]
-#[UsesClass(Aggregates\Max::class)]
-#[UsesClass(Aggregates\All::class)]
-#[UsesClass(Aggregates\AggregateFactory::class)]
-#[UsesClass(Aggregates\AggregateKind::class)]
+#[UsesClass(Column::class)]
+#[UsesClass(DelimitedTable::class)]
+#[UsesClass(AllRows::class)]
+#[UsesClass(AverageColumn::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Results\CompiledLookupResult::class)]
+#[UsesClass(CountRows::class)]
+#[UsesClass(FirstRow::class)]
+#[UsesClass(LastRow::class)]
+#[UsesClass(LookupResultKind::class)]
+#[UsesClass(MaximumRow::class)]
+#[UsesClass(MinimumRow::class)]
+#[UsesClass(NumericResult::class)]
+#[UsesClass(ProjectedResult::class)]
+#[UsesClass(RecordProjection::class)]
+#[UsesClass(SumColumn::class)]
+#[UsesClass(ValueProjection::class)]
 class LookupSourceTest extends TestCase
 {
     private Filesystem $filesystem;
@@ -78,21 +98,72 @@ class LookupSourceTest extends TestCase
         string $path,
         array $filters = [],
         array $columns = [],
-        string $aggregate = 'first',
-        string|int|null $aggregateColumn = null,
+        string $resultKind = 'first',
+        string|int|null $resultColumn = null,
         string $delimiter = ',',
         bool $hasHeader = true,
         array $schema = [],
     ): LookupSource {
+        foreach ($filters as $filter) {
+            if ($filter instanceof ValueFilter) {
+                $schema[$filter->column] ??= new StringType();
+            }
+
+            if ($filter instanceof RangeFilter) {
+                $schema[$filter->minColumn] ??= new StringType();
+                $schema[$filter->maxColumn] ??= new StringType();
+            }
+        }
+
+        if ($resultColumn !== null) {
+            $schema[$resultColumn] ??= in_array($resultKind, ['min', 'max', 'sum', 'avg'], strict: true)
+                ? new NumberType()
+                : new StringType();
+        }
+
+        foreach ($columns as $column) {
+            $schema[$column] ??= new StringType();
+        }
+
+        $projection = function () use ($columns, $schema): ValueProjection|RecordProjection {
+            if (count($columns) === 1) {
+                return new ValueProjection($columns[0]);
+            }
+
+            $projected = $columns === [] ? array_keys($schema) : $columns;
+
+            if ($projected === []) {
+                return new ValueProjection('__missing');
+            }
+
+            return new RecordProjection(array_combine(array_map(strval(...), $projected), $projected));
+        };
+
+        $result = match ($resultKind) {
+            'first' => new ProjectedResult(new FirstRow(), $projection()),
+            'last' => new ProjectedResult(new LastRow(), $projection()),
+            'all' => new ProjectedResult(new AllRows(), $projection()),
+            'min' => new ProjectedResult(new MinimumRow($resultColumn ?? '__missing'), $projection()),
+            'max' => new ProjectedResult(new MaximumRow($resultColumn ?? '__missing'), $projection()),
+            'count' => new NumericResult(new CountRows()),
+            'sum' => new NumericResult(new SumColumn($resultColumn ?? '__missing')),
+            'avg' => new NumericResult(new AverageColumn($resultColumn ?? '__missing')),
+            default => throw new RuntimeException("Unknown test result kind [{$resultKind}]."),
+        };
+
         return new LookupSource(
-            path: $path,
+            table: new DelimitedTable(
+                path: $path,
+                columns: array_map(
+                    fn(string|int $identity, Type $type): Column => new Column($identity, $type),
+                    array_keys($schema),
+                    array_values($schema),
+                ),
+                delimiter: $delimiter,
+                hasHeader: $hasHeader,
+            ),
+            result: $result,
             filters: $filters,
-            columns: $columns,
-            aggregate: $aggregate,
-            aggregateColumn: $aggregateColumn,
-            delimiter: $delimiter,
-            hasHeader: $hasHeader,
-            schema: $schema,
         );
     }
 
@@ -221,7 +292,7 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['name'],
-            aggregate: 'first',
+            resultKind: 'first',
         );
 
         $result = $this->execute($source);
@@ -237,7 +308,7 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['name'],
-            aggregate: 'last',
+            resultKind: 'last',
         );
 
         $result = $this->execute($source);
@@ -253,8 +324,8 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['salary'],
-            aggregate: 'min',
-            aggregateColumn: 'salary',
+            resultKind: 'min',
+            resultColumn: 'salary',
         );
 
         $result = $this->execute($source);
@@ -270,8 +341,8 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['salary'],
-            aggregate: 'max',
-            aggregateColumn: 'salary',
+            resultKind: 'max',
+            resultColumn: 'salary',
         );
 
         $result = $this->execute($source);
@@ -296,12 +367,18 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_all_columns_when_columns_is_empty(): void
+    public function a_record_projection_can_alias_declared_columns(): void
     {
-        $source = $this->lookup(
-            path: 'users.csv',
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [
+                new Column('name', new StringType()),
+                new Column('age', new NumberType()),
+            ]),
+            result: new ProjectedResult(
+                new FirstRow(),
+                new RecordProjection(['user' => 'name', 'years' => 'age']),
+            ),
             filters: [$this->filter('name', new StaticSource('Alice'))],
-            columns: [],
         );
 
         $result = $this->execute($source);
@@ -309,9 +386,7 @@ class LookupSourceTest extends TestCase
         $this->assertTrue($result->isOk());
         $row = $result->unwrap()->unwrap();
         $this->assertIsArray($row);
-        $this->assertEquals('Alice', $row['name']);
-        $this->assertEquals('30', $row['age']);
-        $this->assertEquals('NYC', $row['city']);
+        $this->assertSame(['user' => 'Alice', 'years' => 30], $row);
     }
 
     #[Test]
@@ -384,8 +459,8 @@ class LookupSourceTest extends TestCase
             delimiter: "\t",
             filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['product', 'price'],
-            aggregate: 'min',
-            aggregateColumn: 'price',
+            resultKind: 'min',
+            resultColumn: 'price',
         );
 
         $result = $this->execute($source);
@@ -404,8 +479,8 @@ class LookupSourceTest extends TestCase
             delimiter: "\t",
             filters: [$this->filter('category', new StaticSource('Electronics'))],
             columns: ['product', 'price'],
-            aggregate: 'max',
-            aggregateColumn: 'price',
+            resultKind: 'max',
+            resultColumn: 'price',
         );
 
         $result = $this->execute($source);
@@ -484,46 +559,31 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_error_for_unknown_aggregate_at_runtime(): void
-    {
-        $source = $this->lookup(
-            path: 'users.csv',
-            filters: [$this->filter('name', new StaticSource('Alice'))],
-            columns: ['age'],
-            aggregate: 'invalid_aggregate',
-        );
-
-        $result = $this->execute($source);
-
-        $this->assertTrue($result->isErr());
-    }
-
-    #[Test]
-    public function it_returns_error_for_min_aggregate_without_aggregate_column(): void
+    public function minimum_row_requires_a_declared_ordering_column(): void
     {
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['salary'],
-            aggregate: 'min',
+            resultKind: 'min',
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
     }
 
     #[Test]
-    public function it_returns_error_for_max_aggregate_without_aggregate_column(): void
+    public function maximum_row_requires_a_declared_ordering_column(): void
     {
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['salary'],
-            aggregate: 'max',
+            resultKind: 'max',
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
     }
@@ -534,7 +594,7 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
-            aggregate: 'count',
+            resultKind: 'count',
         );
 
         $result = $this->execute($source);
@@ -549,8 +609,8 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
-            aggregate: 'sum',
-            aggregateColumn: 'salary',
+            resultKind: 'sum',
+            resultColumn: 'salary',
         );
 
         $result = $this->execute($source);
@@ -565,8 +625,8 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
-            aggregate: 'avg',
-            aggregateColumn: 'salary',
+            resultKind: 'avg',
+            resultColumn: 'salary',
         );
 
         $result = $this->execute($source);
@@ -576,29 +636,29 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_error_for_sum_without_aggregate_column(): void
+    public function sum_requires_a_declared_numeric_column(): void
     {
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
-            aggregate: 'sum',
+            resultKind: 'sum',
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
     }
 
     #[Test]
-    public function it_returns_error_for_avg_without_aggregate_column(): void
+    public function average_requires_a_declared_numeric_column(): void
     {
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
-            aggregate: 'avg',
+            resultKind: 'avg',
         );
 
-        $result = $this->execute($source);
+        $result = $this->expression($source)->compile();
 
         $this->assertTrue($result->isErr());
     }
@@ -672,10 +732,10 @@ class LookupSourceTest extends TestCase
     {
         // Create a CSV with regions and banding using Flysystem
         $csvContent = "region,min_value,max_value,rate\nNorth,0,100,5\nNorth,100,200,10\nSouth,0,100,7\nSouth,100,200,12\n";
-        $this->filesystem->write('regional_bands.csv', $csvContent);
+        $this->filesystem->write('regional_bands_runtime.csv', $csvContent);
 
         $source = $this->lookup(
-            path: 'regional_bands.csv',
+            path: 'regional_bands_runtime.csv',
             filters: [
                 $this->filter('region', new StaticSource('North')),
                 new RangeFilter('min_value', 'max_value', new StaticSource(150)),
@@ -690,7 +750,7 @@ class LookupSourceTest extends TestCase
         $this->assertEquals('10', $result->unwrap()->unwrap()); // North region, 150 in 100-200 band
 
         // Cleanup
-        $this->filesystem->delete('regional_bands.csv');
+        $this->filesystem->delete('regional_bands_runtime.csv');
     }
 
     #[Test]
@@ -719,15 +779,15 @@ class LookupSourceTest extends TestCase
     #[Test]
     public function undeclared_string_columns_preserve_empty_and_literal_null_cells(): void
     {
-        $this->filesystem->write('raw_strings.csv', "key,label\n,blank\nnull,literal-null\n");
+        $this->filesystem->write('raw_strings_runtime.csv', "key,label\n,blank\nnull,literal-null\n");
 
         $blank = $this->execute($this->lookup(
-            path: 'raw_strings.csv',
+            path: 'raw_strings_runtime.csv',
             filters: [$this->filter('key', new StaticSource(''))],
             columns: ['label'],
         ));
         $literalNull = $this->execute($this->lookup(
-            path: 'raw_strings.csv',
+            path: 'raw_strings_runtime.csv',
             filters: [$this->filter('key', new StaticSource('null'))],
             columns: ['label'],
         ));
@@ -735,7 +795,7 @@ class LookupSourceTest extends TestCase
         $this->assertSame('blank', $blank->unwrap()->unwrap());
         $this->assertSame('literal-null', $literalNull->unwrap()->unwrap());
 
-        $this->filesystem->delete('raw_strings.csv');
+        $this->filesystem->delete('raw_strings_runtime.csv');
     }
 
     #[Test]
@@ -847,7 +907,7 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'invalid_number.csv',
             filters: [new RangeFilter('minimum', 'maximum', new StaticSource(100))],
-            aggregate: 'count',
+            resultKind: 'count',
             schema: self::numbers('minimum', 'maximum'),
         );
 
@@ -865,7 +925,7 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'invalid_maximum.csv',
             filters: [new RangeFilter('minimum', 'maximum', new StaticSource(100))],
-            aggregate: 'count',
+            resultKind: 'count',
             schema: self::numbers('minimum', 'maximum'),
         );
 
@@ -883,14 +943,13 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'missing_value.csv',
             filters: [$this->filter(2, new StaticSource('active'))],
-            aggregate: 'count',
+            resultKind: 'count',
             hasHeader: false,
         );
 
         $result = $this->execute($source);
 
-        $this->assertTrue($result->isOk());
-        $this->assertTrue($result->unwrap()->isNone());
+        $this->assertTrue($result->isErr());
 
         $this->filesystem->delete('missing_value.csv');
     }
@@ -898,36 +957,20 @@ class LookupSourceTest extends TestCase
     #[Test]
     public function range_filters_do_not_match_values_below_the_minimum(): void
     {
-        $this->filesystem->write('below_minimum.csv', "minimum,maximum\n100,200\n");
+        $this->filesystem->write('below_minimum_runtime.csv', "minimum,maximum\n100,200\n");
         $source = $this->lookup(
-            path: 'below_minimum.csv',
+            path: 'below_minimum_runtime.csv',
             filters: [new RangeFilter('minimum', 'maximum', new StaticSource(99))],
-            aggregate: 'count',
+            resultKind: 'count',
             schema: self::numbers('minimum', 'maximum'),
         );
 
         $result = $this->execute($source);
 
         $this->assertTrue($result->isOk());
-        $this->assertTrue($result->unwrap()->isNone());
+        $this->assertSame(0, $result->unwrap()->unwrap());
 
-        $this->filesystem->delete('below_minimum.csv');
-    }
-
-    #[Test]
-    public function it_reports_unknown_aggregate_message(): void
-    {
-        $source = $this->lookup(
-            path: 'users.csv',
-            filters: [$this->filter('name', new StaticSource('Alice'))],
-            columns: ['age'],
-            aggregate: 'unknown_aggregate',
-        );
-
-        $result = $this->execute($source);
-
-        $this->assertTrue($result->isErr());
-        $this->assertStringContainsString('Unknown aggregate', $result->unwrapErr()->getMessage());
+        $this->filesystem->delete('below_minimum_runtime.csv');
     }
 
     #[Test]
@@ -937,8 +980,8 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('name', new StaticSource('NonExistentPerson'))],
             columns: ['age'],
-            aggregate: 'avg',
-            aggregateColumn: 'age',
+            resultKind: 'avg',
+            resultColumn: 'age',
         );
 
         $result = $this->execute($source);
@@ -954,8 +997,8 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('name', new StaticSource('NonExistentPerson'))],
             columns: ['age'],
-            aggregate: 'sum',
-            aggregateColumn: 'age',
+            resultKind: 'sum',
+            resultColumn: 'age',
         );
 
         $result = $this->execute($source);
@@ -990,8 +1033,8 @@ class LookupSourceTest extends TestCase
             path: basename($tempFile),
             filters: [$this->filter('name', new StaticSource('Item1'))],
             columns: ['value'],
-            aggregate: 'sum',
-            aggregateColumn: 'value',
+            resultKind: 'sum',
+            resultColumn: 'value',
         );
 
         $result = $this->expression($source, $tempFilesystem)->compile()->unwrap()();
@@ -1014,7 +1057,7 @@ class LookupSourceTest extends TestCase
                 operator: 'in',
             )],
             columns: ['salary'],
-            aggregate: 'all',
+            resultKind: 'all',
         );
 
         $result = $this->execute($source);
@@ -1034,7 +1077,7 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('name', new StaticSource('Alice'))],
             columns: ['city'],
-            aggregate: 'all',
+            resultKind: 'all',
         );
         $users = $this->lookup(
             path: 'users.csv',
@@ -1044,7 +1087,7 @@ class LookupSourceTest extends TestCase
                 'in',
             )],
             columns: ['name'],
-            aggregate: 'all',
+            resultKind: 'all',
         );
 
         $result = $this->execute($users);
@@ -1059,7 +1102,7 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('name', new StaticSource('Peter'))],
             columns: ['city'],
-            aggregate: 'all',
+            resultKind: 'all',
         );
         $users = $this->lookup(
             path: 'users.csv',
@@ -1069,7 +1112,7 @@ class LookupSourceTest extends TestCase
                 'in',
             )],
             columns: ['name'],
-            aggregate: 'all',
+            resultKind: 'all',
         );
 
         $result = $this->execute($users);
@@ -1087,7 +1130,7 @@ class LookupSourceTest extends TestCase
                 column: 'name',
             )],
             columns: ['salary'],
-            aggregate: 'all',
+            resultKind: 'all',
         );
 
         $result = $this->execute($source);
@@ -1097,70 +1140,40 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    #[DataProvider('resultTypes')]
-    public function it_declares_a_result_type_per_aggregate(string $aggregate, string $expectedInner): void
+    public function count_is_total_while_sum_and_average_are_optional_numbers(): void
     {
-        $source = $this->lookup(
+        $count = $this->expression($this->lookup(path: 'users.csv', resultKind: 'count'))
+            ->compile()->unwrap()->returns;
+        $sum = $this->expression($this->lookup(
             path: 'users.csv',
-            filters: [$this->filter('city', new StaticSource('NYC'))],
-            aggregate: $aggregate,
-            aggregateColumn: 'salary',
-        );
+            resultKind: 'sum',
+            resultColumn: 'salary',
+        ))->compile()->unwrap()->returns;
+        $average = $this->expression($this->lookup(
+            path: 'users.csv',
+            resultKind: 'avg',
+            resultColumn: 'salary',
+        ))->compile()->unwrap()->returns;
 
-        $program = $this->expression($source)->compile()->unwrap();
-
-        $this->assertInstanceOf(OptionType::class, $program->returns);
-        $this->assertInstanceOf($expectedInner, $program->returns->inner);
-    }
-
-    /**
-     * @return iterable<string, array{string, class-string}>
-     */
-    public static function resultTypes(): iterable
-    {
-        // Numeric aggregates are statically known; everything else is a raw cell.
-        yield 'count' => ['count', NumberType::class];
-        yield 'sum' => ['sum', NumberType::class];
-        yield 'avg' => ['avg', NumberType::class];
-        yield 'first' => ['first', UnknownType::class];
-        yield 'last' => ['last', UnknownType::class];
-        yield 'min' => ['min', UnknownType::class];
-        yield 'max' => ['max', UnknownType::class];
+        $this->assertInstanceOf(NumberType::class, $count);
+        $this->assertInstanceOf(OptionType::class, $sum);
+        $this->assertInstanceOf(NumberType::class, $sum->inner);
+        $this->assertInstanceOf(OptionType::class, $average);
+        $this->assertInstanceOf(NumberType::class, $average->inner);
     }
 
     #[Test]
-    public function all_declares_a_total_list_of_unknown_values(): void
+    public function an_undeclared_projected_column_is_rejected(): void
     {
-        $source = $this->lookup(
-            path: 'users.csv',
-            aggregate: 'all',
+        $lookup = new LookupSource(
+            table: new DelimitedTable('users.csv', [new Column('name', new StringType())]),
+            result: new ProjectedResult(new AllRows(), new ValueProjection('salary')),
         );
 
-        $returns = $this->expression($source)->compile()->unwrap()->returns;
-
-        $this->assertInstanceOf(ListType::class, $returns);
-        $this->assertInstanceOf(UnknownType::class, $returns->type);
-    }
-
-    #[Test]
-    public function a_list_of_an_undeclared_column_cannot_be_compared_with_intersects(): void
-    {
-        $lookup = $this->lookup(
-            path: 'industries.csv',
-            filters: [$this->filter('Trade', new StaticSource('Access Control Manufacturing'))],
-            columns: ['Manual Work Question'],
-            aggregate: 'all',
-        );
-
-        $result = $this->expression(
-            new InfixExpression($lookup, 'intersects', new StaticSource(['TRUE'])),
-        )->compile();
+        $result = $this->expression($lookup)->compile();
 
         $this->assertTrue($result->isErr());
-        $this->assertStringContainsString(
-            "[intersects] cannot compare List<Unknown> and List<'TRUE', 1> by value equality",
-            $result->unwrapErr()->describe(),
-        );
+        $this->assertStringContainsString('not declared', $result->unwrapErr()->describe());
     }
 
     #[Test]
@@ -1170,7 +1183,7 @@ class LookupSourceTest extends TestCase
             path: 'industries.csv',
             filters: [$this->filter('Trade', new StaticSource('Access Control Manufacturing'))],
             columns: ['Manual Work Question'],
-            aggregate: 'all',
+            resultKind: 'all',
             schema: ['Manual Work Question' => new StringType()],
         );
 
@@ -1187,7 +1200,7 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'users.csv',
             columns: ['salary'],
-            aggregate: 'all',
+            resultKind: 'all',
             schema: self::numbers('salary'),
         );
 
@@ -1198,14 +1211,14 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    #[DataProvider('singleValueAggregates')]
-    public function single_value_aggregates_declare_the_projected_columns_declared_type(string $aggregate): void
+    #[DataProvider('rowSelections')]
+    public function row_selections_declare_the_projected_columns_declared_type(string $resultKind): void
     {
         $source = $this->lookup(
             path: 'users.csv',
             columns: ['salary'],
-            aggregate: $aggregate,
-            aggregateColumn: 'salary',
+            resultKind: $resultKind,
+            resultColumn: 'salary',
             schema: self::numbers('salary'),
         );
 
@@ -1216,7 +1229,7 @@ class LookupSourceTest extends TestCase
     }
 
     /** @return iterable<string, array{string}> */
-    public static function singleValueAggregates(): iterable
+    public static function rowSelections(): iterable
     {
         yield 'first' => ['first'];
         yield 'last' => ['last'];
@@ -1225,63 +1238,69 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function an_undeclared_projected_column_stays_unknown(): void
+    public function an_undeclared_filter_column_is_rejected(): void
     {
-        $source = $this->lookup(
-            path: 'users.csv',
-            columns: ['name'],
-            aggregate: 'all',
-            schema: self::numbers('salary'),
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [new Column('name', new StringType())]),
+            result: new ProjectedResult(new AllRows(), new ValueProjection('name')),
+            filters: [$this->filter('city', new StaticSource('NYC'))],
         );
 
-        $returns = $this->expression($source)->compile()->unwrap()->returns;
+        $result = $this->expression($source)->compile();
 
-        $this->assertInstanceOf(ListType::class, $returns);
-        $this->assertInstanceOf(UnknownType::class, $returns->type);
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('not declared', $result->unwrapErr()->describe());
     }
 
     #[Test]
-    public function projecting_several_declared_columns_stays_unknown(): void
+    public function projecting_several_declared_columns_has_an_exact_record_type(): void
     {
         // Several columns extract as a column-keyed array, not a cell, so no
         // single column's declaration describes the result.
         $source = $this->lookup(
             path: 'users.csv',
             columns: ['salary', 'age'],
-            aggregate: 'all',
+            resultKind: 'all',
             schema: self::numbers('salary', 'age'),
         );
 
         $returns = $this->expression($source)->compile()->unwrap()->returns;
 
         $this->assertInstanceOf(ListType::class, $returns);
-        $this->assertInstanceOf(UnknownType::class, $returns->type);
+        $this->assertInstanceOf(RecordType::class, $returns->type);
+        $this->assertSame(['salary', 'age'], array_keys($returns->type->fields));
+        $this->assertInstanceOf(NumberType::class, $returns->type->fields['salary']);
+        $this->assertInstanceOf(NumberType::class, $returns->type->fields['age']);
     }
 
     #[Test]
-    #[DataProvider('numericAggregates')]
-    public function numeric_aggregates_ignore_the_projected_columns_declared_type(
-        string $aggregate,
-        ?string $aggregateColumn,
+    #[DataProvider('numericResults')]
+    public function numeric_results_ignore_the_projected_columns_declared_type(
+        string $resultKind,
+        ?string $resultColumn,
         int|float $expected,
     ): void {
         $source = $this->lookup(
             path: 'users.csv',
             columns: ['name'],
-            aggregate: $aggregate,
-            aggregateColumn: $aggregateColumn,
+            resultKind: $resultKind,
+            resultColumn: $resultColumn,
             schema: ['name' => new StringType()],
         );
 
         $program = $this->expression($source)->compile()->unwrap();
 
-        $this->assertInstanceOf(OptionType::class, $program->returns);
-        $this->assertInstanceOf(NumberType::class, $program->returns->inner);
+        if ($resultKind === 'count') {
+            $this->assertInstanceOf(NumberType::class, $program->returns);
+        } else {
+            $this->assertInstanceOf(OptionType::class, $program->returns);
+            $this->assertInstanceOf(NumberType::class, $program->returns->inner);
+        }
         $this->assertSame($expected, $program()->unwrap()->unwrap());
     }
 
     /** @return iterable<string, array{string, ?string, int|float}> */
-    public static function numericAggregates(): iterable
+    public static function numericResults(): iterable
     {
         yield 'count' => ['count', null, 5];
         yield 'sum' => ['sum', 'salary', 375000.0];
@@ -1310,7 +1329,7 @@ class LookupSourceTest extends TestCase
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['salary'],
-            aggregate: 'all',
+            resultKind: 'all',
             schema: self::numbers('salary'),
         );
 
@@ -1328,7 +1347,7 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'raw_cells.csv',
             columns: ['key'],
-            aggregate: 'all',
+            resultKind: 'all',
             schema: ['key' => new StringType()],
         );
 
@@ -1365,7 +1384,7 @@ class LookupSourceTest extends TestCase
         $source = $this->lookup(
             path: 'empty_score.csv',
             columns: ['score'],
-            aggregate: 'all',
+            resultKind: 'all',
             schema: self::numbers('score'),
         );
 
@@ -1381,7 +1400,7 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function an_absent_cell_of_a_declared_column_is_absence_for_a_single_value(): void
+    public function an_absent_required_cell_fails_a_single_value_projection(): void
     {
         $this->filesystem->write('empty_score.csv', "id,score\n1,\n");
         $source = $this->lookup(
@@ -1392,8 +1411,8 @@ class LookupSourceTest extends TestCase
 
         $result = $this->execute($source);
 
-        $this->assertTrue($result->isOk());
-        $this->assertTrue($result->unwrap()->isNone());
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('matching row has no value', $result->unwrapErr()->getMessage());
 
         $this->filesystem->delete('empty_score.csv');
     }
@@ -1431,41 +1450,39 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function range_filter_returns_false_when_min_column_missing(): void
+    public function a_missing_required_minimum_fails_the_lookup(): void
     {
-        $this->filesystem->write('missing_min.csv', "200,Product\n");
+        $this->filesystem->write('missing_min_runtime.csv', "200,Product\n");
         $source = $this->lookup(
-            path: 'missing_min.csv',
+            path: 'missing_min_runtime.csv',
             filters: [new RangeFilter(2, 0, new StaticSource(100))],
-            aggregate: 'count',
+            resultKind: 'count',
             hasHeader: false,
             schema: self::numbers(2, 0),
         );
 
         $result = $this->execute($source);
 
-        $this->assertTrue($result->isOk());
-        $this->assertTrue($result->unwrap()->isNone());
+        $this->assertTrue($result->isErr());
 
-        $this->filesystem->delete('missing_min.csv');
+        $this->filesystem->delete('missing_min_runtime.csv');
     }
 
     #[Test]
-    public function range_filter_returns_false_when_max_column_missing(): void
+    public function a_missing_required_maximum_fails_the_lookup(): void
     {
         $this->filesystem->write('missing_max.csv', "50,Product\n");
         $source = $this->lookup(
             path: 'missing_max.csv',
             filters: [new RangeFilter(0, 2, new StaticSource(100))],
-            aggregate: 'count',
+            resultKind: 'count',
             hasHeader: false,
             schema: self::numbers(0, 2),
         );
 
         $result = $this->execute($source);
 
-        $this->assertTrue($result->isOk());
-        $this->assertTrue($result->unwrap()->isNone());
+        $this->assertTrue($result->isErr());
 
         $this->filesystem->delete('missing_max.csv');
     }
@@ -1546,13 +1563,13 @@ class LookupSourceTest extends TestCase
     }
 
     #[Test]
-    public function first_aggregate_stops_processing_after_first_match(): void
+    public function first_row_stops_processing_after_first_match(): void
     {
         $source = $this->lookup(
             path: 'users.csv',
             filters: [$this->filter('city', new StaticSource('NYC'))],
             columns: ['name'],
-            aggregate: 'first',
+            resultKind: 'first',
         );
 
         $result = $this->execute($source);
@@ -1585,20 +1602,19 @@ class LookupSourceTest extends TestCase
     #[Test]
     public function it_cleans_up_stream_when_error_occurs_during_processing(): void
     {
-        // The stream is opened, then the unknown aggregate errors mid-fold —
-        // the finally block must still close it.
-        $source = $this->lookup(
-            path: 'users.csv',
-            filters: [],
-            columns: ['name'],
-            aggregate: 'unknown_aggregate_type',
+        $this->filesystem->write('stream_error.csv', "value\nnot-a-number\n");
+        $source = new LookupSource(
+            table: new DelimitedTable('stream_error.csv', [new Column('value', new NumberType())]),
+            result: new ProjectedResult(new FirstRow(), new ValueProjection('value')),
         );
 
         $result = $this->execute($source);
 
         $this->assertTrue($result->isErr());
-        $error = $result->unwrapErr();
-        $this->assertStringContainsString('Unknown aggregate', $error->getMessage());
+        $this->assertStringContainsString("holds ['not-a-number']", $result->unwrapErr()->getMessage());
+
+        // A leaked local stream would keep this deletion from succeeding on Windows.
+        $this->filesystem->delete('stream_error.csv');
     }
 
     #[Test]
@@ -1635,5 +1651,248 @@ class LookupSourceTest extends TestCase
         $this->assertInstanceOf(\RuntimeException::class, $error);
         $this->assertStringContainsString('Could not open file', $error->getMessage());
         $this->assertStringContainsString('test.csv', $error->getMessage());
+    }
+
+    #[Test]
+    public function numeric_folds_require_numeric_declarations(): void
+    {
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [new Column('name', new StringType())]),
+            result: new NumericResult(new SumColumn('name')),
+        );
+
+        $result = $this->expression($source)->compile();
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('must be Number', $result->unwrapErr()->describe());
+        $this->assertStringContainsString('String is not assignable to Number', $result->unwrapErr()->describe());
+    }
+
+    #[Test]
+    public function an_absent_optional_value_filter_cell_does_not_match(): void
+    {
+        $this->filesystem->write('optional_filter.csv', "tag,other\n,placeholder\nx,placeholder\n");
+        $source = new LookupSource(
+            table: new DelimitedTable('optional_filter.csv', [
+                new Column('tag', new OptionType(new StringType())),
+            ]),
+            result: new NumericResult(new CountRows()),
+            filters: [$this->filter('tag', new StaticSource('x'))],
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame(1, $result->unwrap()->unwrap());
+        $this->filesystem->delete('optional_filter.csv');
+    }
+
+    #[Test]
+    public function a_range_with_an_absent_optional_bound_does_not_match(): void
+    {
+        $this->filesystem->write('optional_range.csv', "minimum,maximum\n,200\n100,200\n");
+        $optionalNumber = new OptionType(new NumberType());
+        $source = new LookupSource(
+            table: new DelimitedTable('optional_range.csv', [
+                new Column('minimum', $optionalNumber),
+                new Column('maximum', $optionalNumber),
+            ]),
+            result: new NumericResult(new CountRows()),
+            filters: [new RangeFilter('minimum', 'maximum', new StaticSource(150))],
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame(1, $result->unwrap()->unwrap());
+        $this->filesystem->delete('optional_range.csv');
+    }
+
+    #[Test]
+    public function every_named_declaration_must_exist_in_the_header(): void
+    {
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [
+                new Column('name', new StringType()),
+                new Column('missing', new StringType()),
+            ]),
+            result: new ProjectedResult(new FirstRow(), new ValueProjection('name')),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('header is missing', $result->unwrapErr()->getMessage());
+    }
+
+    #[Test]
+    public function row_ordering_skips_absent_optional_values(): void
+    {
+        $this->filesystem->write('optional_order.csv', "id,score\nmissing,\npresent,5\n");
+        $source = new LookupSource(
+            table: new DelimitedTable('optional_order.csv', [
+                new Column('id', new StringType()),
+                new Column('score', new OptionType(new NumberType())),
+            ]),
+            result: new ProjectedResult(new MinimumRow('score'), new ValueProjection('id')),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame('present', $result->unwrap()->unwrap());
+        $this->filesystem->delete('optional_order.csv');
+    }
+
+    #[Test]
+    public function invalid_ordering_values_fail_while_selecting_a_row(): void
+    {
+        $this->filesystem->write('invalid_order.csv', "id,score\ninvalid,not-a-number\n");
+        $source = new LookupSource(
+            table: new DelimitedTable('invalid_order.csv', [
+                new Column('id', new StringType()),
+                new Column('score', new NumberType()),
+            ]),
+            result: new ProjectedResult(new MinimumRow('score'), new ValueProjection('id')),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->filesystem->delete('invalid_order.csv');
+    }
+
+    #[Test]
+    public function numeric_folds_skip_absent_optional_values(): void
+    {
+        $this->filesystem->write('optional_sum.csv', "value,other\n,placeholder\n5,placeholder\n");
+        $source = new LookupSource(
+            table: new DelimitedTable('optional_sum.csv', [
+                new Column('value', new OptionType(new NumberType())),
+            ]),
+            result: new NumericResult(new SumColumn('value')),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertSame(5.0, $result->unwrap()->unwrap());
+        $this->filesystem->delete('optional_sum.csv');
+    }
+
+    #[Test]
+    public function numeric_folds_guard_the_admitted_runtime_value(): void
+    {
+        $dishonestNumber = new class extends NumberType {
+            public function coerce(mixed $value): Result
+            {
+                return \Superscript\Monads\Result\Ok(\Superscript\Monads\Option\Some('not-a-number'));
+            }
+        };
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [new Column('salary', $dishonestNumber)]),
+            result: new NumericResult(new SumColumn('salary')),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString('admitted a non-numeric value', $result->unwrapErr()->getMessage());
+    }
+
+    #[Test]
+    public function a_record_projection_stops_at_an_invalid_declared_field(): void
+    {
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [
+                new Column('name', new StringType()),
+                new Column('city', new NumberType()),
+            ]),
+            result: new ProjectedResult(
+                new FirstRow(),
+                new RecordProjection(['name' => 'name', 'city' => 'city']),
+            ),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->assertStringContainsString("Column [city]", $result->unwrapErr()->getMessage());
+    }
+
+    #[Test]
+    public function a_single_optional_projection_is_not_wrapped_twice(): void
+    {
+        $optionalName = new OptionType(new StringType());
+        $source = new LookupSource(
+            table: new DelimitedTable('users.csv', [new Column('name', $optionalName)]),
+            result: new ProjectedResult(new FirstRow(), new ValueProjection('name')),
+        );
+
+        $returns = $this->expression($source)->compile()->unwrap()->returns;
+
+        $this->assertSame($optionalName, $returns);
+    }
+
+    #[Test]
+    public function a_physically_missing_optional_position_is_absent(): void
+    {
+        $this->filesystem->write('optional_position.csv', "id,present\n");
+        $source = new LookupSource(
+            table: new DelimitedTable(
+                'optional_position.csv',
+                [new Column(2, new OptionType(new NumberType()))],
+                hasHeader: false,
+            ),
+            result: new ProjectedResult(new FirstRow(), new ValueProjection(2)),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isOk());
+        $this->assertTrue($result->unwrap()->isNone());
+        $this->filesystem->delete('optional_position.csv');
+    }
+
+    #[Test]
+    public function a_physically_missing_required_position_fails_before_coercion(): void
+    {
+        $this->filesystem->write('required_position.csv', "id,present\n");
+        $dishonestNumber = new class extends NumberType {
+            public function coerce(mixed $value): Result
+            {
+                return \Superscript\Monads\Result\Ok(\Superscript\Monads\Option\Some(7));
+            }
+        };
+        $source = new LookupSource(
+            table: new DelimitedTable(
+                'required_position.csv',
+                [new Column(2, $dishonestNumber)],
+                hasHeader: false,
+            ),
+            result: new ProjectedResult(new FirstRow(), new ValueProjection(2)),
+        );
+
+        $result = $this->execute($source);
+
+        $this->assertTrue($result->isErr());
+        $this->filesystem->delete('required_position.csv');
+    }
+
+    #[Test]
+    public function minimum_row_keeps_scanning_after_replacements_and_non_replacements(): void
+    {
+        $this->filesystem->write('minimum_replacements.csv', "id,score\nfirst,3\nsecond,2\nthird,1\n");
+        $this->filesystem->write('minimum_non_replacements.csv', "id,score\nfirst,1\nsecond,3\nthird,0\n");
+
+        $lookup = fn(string $path): LookupSource => new LookupSource(
+            table: new DelimitedTable($path, [
+                new Column('id', new StringType()),
+                new Column('score', new NumberType()),
+            ]),
+            result: new ProjectedResult(new MinimumRow('score'), new ValueProjection('id')),
+        );
+
+        $this->assertSame('third', $this->execute($lookup('minimum_replacements.csv'))->unwrap()->unwrap());
+        $this->assertSame('third', $this->execute($lookup('minimum_non_replacements.csv'))->unwrap()->unwrap());
+
+        $this->filesystem->delete('minimum_replacements.csv');
+        $this->filesystem->delete('minimum_non_replacements.csv');
     }
 }

@@ -9,10 +9,25 @@ use League\Flysystem\Local\LocalFilesystemAdapter;
 use PhpBench\Attributes\{BeforeMethods, Groups, Iterations, Revs, Warmup};
 use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
+use Superscript\Axiom\Lookup\Column;
+use Superscript\Axiom\Lookup\DelimitedTable;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Filters\{RangeFilter, ValueFilter};
+use Superscript\Axiom\Lookup\Support\Results\{
+    AverageColumn,
+    CountRows,
+    FirstRow,
+    LastRow,
+    MaximumRow,
+    MinimumRow,
+    NumericResult,
+    ProjectedResult,
+    RecordProjection,
+    SumColumn,
+};
 use Superscript\Axiom\Sources\StaticSource;
+use Superscript\Axiom\Types\{NumberType, StringType};
 
 /**
  * Benchmarks for CSV/TSV lookup performance characteristics.
@@ -76,6 +91,33 @@ class LookupResolverBench
         (new Expression($source, dialect: $dialect))->compile()->unwrap()();
     }
 
+    /** @param list<\Superscript\Axiom\Lookup\Support\Filters\Filter> $filters */
+    private function lookup(
+        string $path,
+        ProjectedResult|NumericResult $result,
+        array $filters = [],
+    ): LookupSource {
+        return new LookupSource(
+            table: new DelimitedTable($path, [
+                new Column('id', new NumberType()),
+                new Column('name', new StringType()),
+                new Column('category', new StringType()),
+                new Column('price', new NumberType()),
+                new Column('quantity', new NumberType()),
+            ]),
+            result: $result,
+            filters: $filters,
+        );
+    }
+
+    private function records(FirstRow|LastRow|MinimumRow|MaximumRow $rows = new FirstRow()): ProjectedResult
+    {
+        return new ProjectedResult($rows, new RecordProjection([
+            'name' => 'name',
+            'price' => 'price',
+        ]));
+    }
+
     private function createCsvFile(string $filename, int $rows): void
     {
         $path = sys_get_temp_dir() . '/' . $filename;
@@ -104,10 +146,10 @@ class LookupResolverBench
     #[Warmup(1)]
     public function benchExactFilterSmallFile(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->smallCsvFilename,
+            result: $this->records(),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
         ));
     }
 
@@ -118,10 +160,10 @@ class LookupResolverBench
     #[Warmup(1)]
     public function benchExactFilterMediumFile(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->mediumCsvFilename,
+            result: $this->records(),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
         ));
     }
 
@@ -132,10 +174,10 @@ class LookupResolverBench
     #[Warmup(1)]
     public function benchExactFilterLargeFile(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: $this->records(),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
         ));
     }
 
@@ -146,116 +188,108 @@ class LookupResolverBench
     #[Warmup(1)]
     public function benchExactFilterHugeFile(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->hugeCsvFilename,
+            result: $this->records(),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'first'])]
+    #[Groups(['result', 'first'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchFirstAggregate(): void
+    public function benchFirstRow(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: $this->records(),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
-            aggregate: 'first',
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'last'])]
+    #[Groups(['result', 'last'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchLastAggregate(): void
+    public function benchLastRow(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: $this->records(new LastRow()),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
-            aggregate: 'last',
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'count'])]
+    #[Groups(['result', 'count'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchCountAggregate(): void
+    public function benchCountRows(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: new NumericResult(new CountRows()),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            aggregate: 'count',
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'sum'])]
+    #[Groups(['result', 'sum'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchSumAggregate(): void
+    public function benchSumColumn(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: new NumericResult(new SumColumn('price')),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            aggregate: 'sum',
-            aggregateColumn: 'price',
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'avg'])]
+    #[Groups(['result', 'average'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchAvgAggregate(): void
+    public function benchAverageColumn(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: new NumericResult(new AverageColumn('price')),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            aggregate: 'avg',
-            aggregateColumn: 'price',
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'min'])]
+    #[Groups(['result', 'minimum'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchMinAggregate(): void
+    public function benchMinimumRow(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: $this->records(new MinimumRow('price')),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
-            aggregate: 'min',
-            aggregateColumn: 'price',
         ));
     }
 
     #[BeforeMethods('setUp')]
-    #[Groups(['aggregate', 'max'])]
+    #[Groups(['result', 'maximum'])]
     #[Iterations(5)]
     #[Revs(10)]
     #[Warmup(1)]
-    public function benchMaxAggregate(): void
+    public function benchMaximumRow(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: $this->records(new MaximumRow('price')),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            columns: ['name', 'price'],
-            aggregate: 'max',
-            aggregateColumn: 'price',
         ));
     }
 
@@ -266,10 +300,10 @@ class LookupResolverBench
     #[Warmup(1)]
     public function benchRangeFilter(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->mediumCsvFilename,
+            result: $this->records(),
             filters: [new RangeFilter('price', 'price', new StaticSource('500'))],
-            columns: ['name', 'price'],
         ));
     }
 
@@ -280,13 +314,13 @@ class LookupResolverBench
     #[Warmup(1)]
     public function benchMultipleFilters(): void
     {
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->largeCsvFilename,
+            result: $this->records(),
             filters: [
                 new ValueFilter('category', new StaticSource('Electronics')),
                 new RangeFilter('price', 'price', new StaticSource('500')),
             ],
-            columns: ['name', 'price'],
         ));
     }
 
@@ -298,10 +332,10 @@ class LookupResolverBench
     public function benchStreamingMemoryEfficiency(): void
     {
         // This benchmark tests memory efficiency with a huge file
-        $this->resolve(new LookupSource(
+        $this->resolve($this->lookup(
             path: $this->hugeCsvFilename,
+            result: new NumericResult(new CountRows()),
             filters: [new ValueFilter('category', new StaticSource('Electronics'))],
-            aggregate: 'count',
         ));
     }
 }

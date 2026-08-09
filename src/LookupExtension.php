@@ -9,70 +9,50 @@ use League\Flysystem\FilesystemOperator;
 use RuntimeException;
 use Superscript\Axiom\BoundOperation;
 use Superscript\Axiom\CompiledSource;
+use Superscript\Axiom\Exceptions\TransformValueException;
 use Superscript\Axiom\Extension;
-use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
 use Superscript\Axiom\Lookup\Support\Filters\RangeFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
+use Superscript\Axiom\Lookup\Support\Results\AllRows;
+use Superscript\Axiom\Lookup\Support\Results\CompiledLookupResult;
+use Superscript\Axiom\Lookup\Support\Results\CountRows;
+use Superscript\Axiom\Lookup\Support\Results\FirstRow;
+use Superscript\Axiom\Lookup\Support\Results\LastRow;
+use Superscript\Axiom\Lookup\Support\Results\MinimumRow;
+use Superscript\Axiom\Lookup\Support\Results\NumericResult;
+use Superscript\Axiom\Lookup\Support\Results\ProjectedResult;
+use Superscript\Axiom\Lookup\Support\Results\RecordProjection;
+use Superscript\Axiom\Lookup\Support\Results\SumColumn;
+use Superscript\Axiom\Lookup\Support\Results\ValueProjection;
 use Superscript\Axiom\Source;
 use Superscript\Axiom\SourceCompilation;
 use Superscript\Axiom\SourceEvaluation;
-use Superscript\Axiom\Exceptions\TransformValueException;
 use Superscript\Axiom\Types\BooleanType;
 use Superscript\Axiom\Types\ListType;
 use Superscript\Axiom\Types\NumberType;
 use Superscript\Axiom\Types\OptionType;
+use Superscript\Axiom\Types\PresentType;
+use Superscript\Axiom\Types\RecordType;
+use Superscript\Axiom\Types\Shapes\OptionShape;
 use Superscript\Axiom\Types\StringType;
 use Superscript\Axiom\Types\Type;
 use Superscript\Axiom\Types\TypeDescriber;
 use Superscript\Axiom\Types\TypeMismatch;
 use Superscript\Axiom\Types\TypeRelations;
-use Superscript\Axiom\Types\UnknownType;
 use Superscript\Monads\Option\Option;
 use Superscript\Monads\Result\Result;
 use Throwable;
 
-use function Psl\Iter\first;
 use function Psl\Type\instance_of;
 use function Psl\Vec\map;
-use function Superscript\Monads\Option\None;
 use function Superscript\Monads\Result\attempt;
 use function Superscript\Monads\Result\Err;
 use function Superscript\Monads\Result\Ok;
 
-/**
- * The lookup package's contribution to a {@see \Superscript\Axiom\Dialect}:
- * the source compiler that turns a data-only {@see LookupSource} into a
- * streaming {@see CompiledSource}. The {@see FilesystemOperator} the read needs
- * is injected here — the live collaborator the old container wired into the
- * resolver — and captured in the compiled program, so the persisted
- * `LookupSource` tree carries no filesystem of its own.
- *
- * ```php
- * $dialect = Dialect::core()->with(new LookupExtension($filesystem));
- * $program = (new Expression($lookupSource, dialect: $dialect))->compile()->unwrap();
- * ```
- *
- * The compiled source's type is only ever as strong as the file's own
- * promise. `count`/`sum`/`avg` are numeric by construction, so they declare
- * `Option<Number>` whatever the file says. Every other aggregate hands back
- * cells, and a cell is typed only where {@see LookupSource::$schema} declares
- * its column: projecting the single column `Product Group`, declared
- * `String`, makes `all` return `List<String>` and `first` return
- * `Option<String>`. An undeclared column — or a projection of several columns
- * or of the whole row, which yields a column-keyed array rather than a cell —
- * stays `Unknown`, and a downstream consumer bridges it with an explicit
- * `Coerce`/`Ascription`.
- *
- * A declaration is a promise the reads keep: every cell of a declared column
- * is admitted through that type before it leaves, so `List<String>` really
- * holds strings and a `Number` column really yields numbers. A cell that
- * cannot be admitted fails the whole lookup with an `Err` naming the file and
- * the column, rather than quietly handing a liar's value to a checker that
- * took the declaration at face value.
- */
+/** Compiles and evaluates typed lookups over serializable delimited tables. */
 final class LookupExtension extends Extension
 {
     public function __construct(private readonly FilesystemOperator $filesystem) {}
@@ -84,141 +64,182 @@ final class LookupExtension extends Extension
 
     private function compile(Source $source, SourceCompilation $compilation): CompiledSource
     {
-        // The registry keys this compiler on LookupSource::class, so the
-        // contract's Source is always ours; narrow it for the type checker.
         $source = instance_of(LookupSource::class)->assert($source);
-
-        // A filter's comparison value is itself a Source (a StaticSource, or
-        // another LookupSource for a nested/dynamic lookup). Compile each once
-        // here; the paired source is evaluated once per invocation before the
-        // row loop, mirroring the old "resolve filters once, then stream".
         $compiledFilters = [];
 
         foreach ($source->filters as $filter) {
             $value = $compilation->child($filter->value);
-            $compiledFilters[] = $this->compileFilter($source, $filter, $value, $compilation);
+            $compiledFilters[] = $this->compileFilter($source->table, $filter, $value, $compilation);
         }
 
+        $compiledResult = $this->compileResult($source->table, $source->result, $compilation);
+
         return $compilation->custom(
-            $this->resultType($source),
-            fn(SourceEvaluation $evaluation): Result => $this->evaluate($source, $evaluation, $compiledFilters),
+            $compiledResult->returns,
+            fn(SourceEvaluation $evaluation): Result => $this->evaluate(
+                $source,
+                $compiledResult,
+                $evaluation,
+                $compiledFilters,
+            ),
         );
     }
 
-    /**
-     * The declared payload type. Numeric aggregates are statically known;
-     * all is a total collection of projected cells; the remaining aggregates
-     * yield one projected cell.
-     */
-    private function resultType(LookupSource $source): Type
-    {
-        if ($this->hasNumericResult($source)) {
-            return new OptionType(new NumberType());
+    private function compileResult(
+        DelimitedTable $table,
+        ProjectedResult|NumericResult $result,
+        SourceCompilation $compilation,
+    ): CompiledLookupResult {
+        if ($result instanceof ProjectedResult) {
+            return $this->compileProjectedResult($table, $result, $compilation);
         }
 
-        return match ($source->aggregate) {
-            'all' => new ListType($this->projectedType($source)),
-            default => new OptionType($this->projectedType($source)),
-        };
+        return $this->compileNumericResult($table, $result, $compilation);
     }
 
-    /** Numeric aggregates construct a number rather than projecting a cell. */
-    private function hasNumericResult(LookupSource $source): bool
-    {
-        return in_array($source->aggregate, ['count', 'sum', 'avg'], strict: true);
-    }
+    private function compileProjectedResult(
+        DelimitedTable $table,
+        ProjectedResult $result,
+        SourceCompilation $compilation,
+    ): CompiledLookupResult {
+        $projected = $this->projectionType($table, $result->projection, $compilation);
 
-    /**
-     * The type of one projected cell: the declared type of the projected
-     * column, or Unknown when the column is undeclared — and Unknown too when
-     * there is no single projected column to speak of.
-     */
-    private function projectedType(LookupSource $source): Type
-    {
-        $column = $this->projectedColumn($source);
-
-        if ($column === null) {
-            return new UnknownType();
+        if ($result->rows instanceof AllRows) {
+            return new CompiledLookupResult(new ListType($projected));
         }
 
-        return $source->schema[$column] ?? new UnknownType();
+        if ($result->rows instanceof FirstRow || $result->rows instanceof LastRow) {
+            return new CompiledLookupResult($this->optionalProjection($projected));
+        }
+
+        $column = $this->requireColumn($table, $result->rows->column, $compilation);
+        $type = PresentType::of($column->type);
+        $operator = $result->rows instanceof MinimumRow ? '<' : '>';
+        $ordering = $this->booleanInfix($compilation, $type, $operator, $type);
+
+        return new CompiledLookupResult($this->optionalProjection($projected), $ordering);
     }
 
-    /**
-     * The one column a projection reads, if it reads exactly one. Projecting
-     * nothing hands back the whole row and projecting several hands back a
-     * column-keyed array (see {@see CsvRecord::extract()}); neither is a cell,
-     * so neither can take a column's declared type.
-     */
-    private function projectedColumn(LookupSource $source): string|int|null
+    private function compileNumericResult(
+        DelimitedTable $table,
+        NumericResult $result,
+        SourceCompilation $compilation,
+    ): CompiledLookupResult {
+        if ($result->fold instanceof CountRows) {
+            return new CompiledLookupResult(new NumberType());
+        }
+
+        $column = $this->requireColumn($table, $result->fold->column, $compilation);
+        $number = new NumberType();
+        $assignable = TypeRelations::isTypeAssignableTo(PresentType::of($column->type), $number);
+
+        if ($assignable->isErr()) {
+            $compilation->reject(new TypeMismatch(sprintf(
+                'Column [%s] used by [%s] must be Number; it is declared %s.',
+                $column->identity,
+                $result->kind()->value,
+                TypeDescriber::describe($column->type),
+            ), [$assignable->unwrapErr()]));
+        }
+
+        return new CompiledLookupResult(new OptionType($number));
+    }
+
+    private function projectionType(
+        DelimitedTable $table,
+        ValueProjection|RecordProjection $projection,
+        SourceCompilation $compilation,
+    ): Type {
+        if ($projection instanceof ValueProjection) {
+            return $this->requireColumn($table, $projection->column, $compilation)->type;
+        }
+
+        $fields = [];
+
+        foreach ($projection->fields as $field => $identity) {
+            $fields[$field] = $this->requireColumn($table, $identity, $compilation)->type;
+        }
+
+        return new RecordType($fields);
+    }
+
+    private function optionalProjection(Type $projected): Type
     {
-        return count($source->columns) === 1 ? first($source->columns) : null;
+        return $projected->shape() instanceof OptionShape ? $projected : new OptionType($projected);
     }
 
     private function compileFilter(
-        LookupSource $source,
+        DelimitedTable $table,
         Filter $filter,
         CompiledSource $value,
         SourceCompilation $compilation,
     ): CompiledFilter {
         if ($filter instanceof ValueFilter) {
-            return $this->compileValueFilter($source, $filter, $value, $compilation);
+            $column = $this->requireColumn($table, $filter->column, $compilation);
+            $cellType = PresentType::of($column->type);
+            $operation = $this->booleanInfix($compilation, $cellType, $filter->operator, $value->returns);
+
+            return new CompiledFilter(
+                $value,
+                fn(CsvRecord $record, mixed $resolved): Result => $this->matchValue(
+                    $table,
+                    $record,
+                    $column,
+                    $resolved,
+                    $operation,
+                ),
+            );
         }
 
         if ($filter instanceof RangeFilter) {
-            return $this->compileRangeFilter($source, $filter, $value, $compilation);
+            $minimum = $this->requireColumn($table, $filter->minColumn, $compilation);
+            $maximum = $this->requireColumn($table, $filter->maxColumn, $compilation);
+            $minimumOperation = $this->booleanInfix(
+                $compilation,
+                $value->returns,
+                '>=',
+                PresentType::of($minimum->type),
+            );
+            $maximumOperation = $this->booleanInfix(
+                $compilation,
+                $value->returns,
+                '<',
+                PresentType::of($maximum->type),
+            );
+
+            return new CompiledFilter(
+                $value,
+                fn(CsvRecord $record, mixed $resolved): Result => $this->matchRange(
+                    $table,
+                    $record,
+                    $minimum,
+                    $maximum,
+                    $resolved,
+                    $minimumOperation,
+                    $maximumOperation,
+                ),
+            );
         }
 
-        $compilation->reject(new TypeMismatch(sprintf(
-            'Filter [%s] has no compiler in LookupExtension.',
-            $filter::class,
-        )));
+        $compilation->reject(sprintf('Filter [%s] has no compiler in LookupExtension.', $filter::class));
     }
 
-    private function compileValueFilter(
-        LookupSource $source,
-        ValueFilter $filter,
-        CompiledSource $value,
+    private function requireColumn(
+        DelimitedTable $table,
+        string|int $identity,
         SourceCompilation $compilation,
-    ): CompiledFilter {
-        $cellType = $this->columnType($source, $filter->column);
-        $operation = $this->booleanInfix($compilation, $cellType, $filter->operator, $value->returns);
+    ): Column {
+        $column = $table->declaration($identity);
 
-        return new CompiledFilter(
-            $value,
-            fn(CsvRecord $record, mixed $resolved): Result => $this->matchValue(
-                $record,
-                $filter->column,
-                $cellType,
-                $resolved,
-                $operation,
-            ),
-        );
-    }
+        if ($column === null) {
+            $compilation->reject(sprintf(
+                'Column [%s] is referenced but not declared by table [%s].',
+                $identity,
+                $table->path,
+            ));
+        }
 
-    private function compileRangeFilter(
-        LookupSource $source,
-        RangeFilter $filter,
-        CompiledSource $value,
-        SourceCompilation $compilation,
-    ): CompiledFilter {
-        $minimumType = $this->columnType($source, $filter->minColumn);
-        $maximumType = $this->columnType($source, $filter->maxColumn);
-        $minimum = $this->booleanInfix($compilation, $value->returns, '>=', $minimumType);
-        $maximum = $this->booleanInfix($compilation, $value->returns, '<', $maximumType);
-
-        return new CompiledFilter(
-            $value,
-            fn(CsvRecord $record, mixed $resolved): Result => $this->matchRange(
-                $record,
-                $filter,
-                $minimumType,
-                $maximumType,
-                $resolved,
-                $minimum,
-                $maximum,
-            ),
-        );
+        return $column;
     }
 
     private function booleanInfix(
@@ -232,7 +253,7 @@ final class LookupExtension extends Extension
 
         if ($assignable->isErr()) {
             $compilation->reject(new TypeMismatch(sprintf(
-                'Lookup filter operator [%s] must return Boolean.',
+                'Lookup operator [%s] must return Boolean.',
                 $operator,
             ), [$assignable->unwrapErr()]));
         }
@@ -240,150 +261,96 @@ final class LookupExtension extends Extension
         return $operation;
     }
 
-    private function columnType(LookupSource $source, string|int $column): Type
-    {
-        return $source->schema[$column] ?? new StringType();
-    }
-
     /** @return Result<bool, Throwable> */
     private function matchValue(
+        DelimitedTable $table,
         CsvRecord $record,
-        string|int $column,
-        Type $cellType,
+        Column $column,
         mixed $value,
         BoundOperation $operation,
     ): Result {
-        return $this->readCellAs($record, $column, $cellType)
-            ->andThen(fn(Option $cell): Result => $cell->isNone()
+        return $this->admitColumn($table, $record, $column)
+            ->andThen(fn(mixed $cell): Result => $cell === null
                 ? Ok(false)
-                : $this->evaluateBoolean($operation, $cell->unwrap(), $value));
+                : $this->evaluateBoolean($operation, $cell, $value));
     }
 
     /** @return Result<bool, Throwable> */
     private function matchRange(
+        DelimitedTable $table,
         CsvRecord $record,
-        RangeFilter $filter,
-        Type $minimumType,
-        Type $maximumType,
+        Column $minimum,
+        Column $maximum,
         mixed $value,
         BoundOperation $minimumOperation,
         BoundOperation $maximumOperation,
     ): Result {
-        $minimum = $this->readCellAs($record, $filter->minColumn, $minimumType);
+        $minimumValue = $this->admitColumn($table, $record, $minimum);
 
-        if ($minimum->isErr()) {
-            return $minimum;
+        if ($minimumValue->isErr()) {
+            return $minimumValue;
         }
 
-        $maximum = $this->readCellAs($record, $filter->maxColumn, $maximumType);
+        $maximumValue = $this->admitColumn($table, $record, $maximum);
 
-        if ($maximum->isErr()) {
-            return $maximum;
+        if ($maximumValue->isErr()) {
+            return $maximumValue;
         }
 
-        if ($minimum->unwrap()->isNone() || $maximum->unwrap()->isNone()) {
+        if ($minimumValue->unwrap() === null || $maximumValue->unwrap() === null) {
             return Ok(false);
         }
 
-        $aboveMinimum = $this->evaluateBoolean($minimumOperation, $value, $minimum->unwrap()->unwrap());
+        $aboveMinimum = $this->evaluateBoolean($minimumOperation, $value, $minimumValue->unwrap());
 
         if ($aboveMinimum->isErr() || $aboveMinimum->unwrap() === false) {
             return $aboveMinimum;
         }
 
-        return $this->evaluateBoolean($maximumOperation, $value, $maximum->unwrap()->unwrap());
+        return $this->evaluateBoolean($maximumOperation, $value, $maximumValue->unwrap());
+    }
+
+    /** @return Result<mixed, Throwable> */
+    private function admitColumn(DelimitedTable $table, CsvRecord $record, Column $column): Result
+    {
+        $hasValue = $record->has($column->identity);
+
+        if (! $hasValue && ! $column->type->shape() instanceof OptionShape) {
+            return Err($this->missingValue($table, $column));
+        }
+
+        $raw = $hasValue ? $record->get($column->identity) : null;
+
+        return $this->castCell($raw, $column->type)
+            ->mapErr(fn(Throwable $error) => new RuntimeException(sprintf(
+                'Column [%s] of [%s] is declared %s, but a matching row holds [%s].',
+                $column->identity,
+                $table->path,
+                TypeDescriber::describe($column->type),
+                TransformValueException::format($raw),
+            ), previous: $error))
+            ->andThen(fn(Option $value): Result => $value->mapOr(
+                default: Err($this->missingValue($table, $column)),
+                f: fn(mixed $admitted): Result => Ok($admitted),
+            ));
+    }
+
+    private function missingValue(DelimitedTable $table, Column $column): RuntimeException
+    {
+        return new RuntimeException(sprintf(
+            'Column [%s] of [%s] is declared %s, but a matching row has no value for it.',
+            $column->identity,
+            $table->path,
+            TypeDescriber::describe($column->type),
+        ));
     }
 
     /** @return Result<Option<mixed>, Throwable> */
-    private function readCellAs(CsvRecord $record, string|int $column, Type $type): Result
-    {
-        if (! $record->has($column)) {
-            return Ok(None());
-        }
-
-        return $this->castCell($record->get($column), $type);
-    }
-
-    /**
-     * Admit one raw cell into a type.
-     *
-     * League CSV already supplies strings. Keep the default CSV domain
-     * lossless: StringType::coerce() deliberately reads '' and 'null' as
-     * absence at lenient input boundaries, but they are valid raw cells.
-     *
-     * @return Result<Option<mixed>, Throwable>
-     */
     private function castCell(mixed $value, Type $type): Result
     {
         return $type::class === StringType::class && is_string($value)
             ? $type->assert($value)
             : $type->coerce($value);
-    }
-
-    /**
-     * Make the projected value inhabit the type {@see resultType()} declared
-     * for it. Only a single projected column of a declared type is admitted;
-     * everything else is Unknown and passes through as the raw CSV data it
-     * has always been.
-     *
-     * `all` declares `List<T>`, whose items are present values, so a row whose
-     * cell reads as absent — an empty cell in a `Number` column — breaks the
-     * declaration and fails the lookup. The single-value aggregates declare
-     * `Option<T>`, where absence is a legal value, so an unmatched lookup or
-     * an absent cell is null as it always was.
-     *
-     * @return Result<mixed, Throwable>
-     */
-    private function admitProjection(LookupSource $source, mixed $projected): Result
-    {
-        if ($this->hasNumericResult($source)) {
-            return Ok($projected);
-        }
-
-        $column = $this->projectedColumn($source);
-
-        if ($column === null || !isset($source->schema[$column])) {
-            return Ok($projected);
-        }
-
-        $type = $source->schema[$column];
-
-        if ($source->aggregate === 'all') {
-            /** @var list<mixed> $projected */
-            return Result::collect(map(
-                $projected,
-                fn(mixed $cell): Result => $this->admitCell($source, $column, $type, $cell)->andThen(
-                    fn(Option $value): Result => $value->mapOr(
-                        default: Err(new RuntimeException(sprintf(
-                            'Column [%s] of [%s] is declared %s, but a matching row has no value for it.',
-                            $column,
-                            $source->path,
-                            TypeDescriber::describe($type),
-                        ))),
-                        f: fn(mixed $cell): Result => Ok($cell),
-                    ),
-                ),
-            ));
-        }
-
-        return $this->admitCell($source, $column, $type, $projected)
-            ->map(fn(Option $value): mixed => $value->unwrapOr(null));
-    }
-
-    /** @return Result<Option<mixed>, Throwable> */
-    private function admitCell(LookupSource $source, string|int $column, Type $type, mixed $cell): Result
-    {
-        if ($cell === null) {
-            return Ok(None());
-        }
-
-        return $this->castCell($cell, $type)->mapErr(fn(Throwable $error) => new RuntimeException(sprintf(
-            'Column [%s] of [%s] is declared %s, but a matching row holds [%s].',
-            $column,
-            $source->path,
-            TypeDescriber::describe($type),
-            TransformValueException::format($cell),
-        ), previous: $error));
     }
 
     /** @return Result<bool, Throwable> */
@@ -396,60 +363,57 @@ final class LookupExtension extends Extension
     }
 
     /**
-     * Stream the file once, matching each row against the filters and folding
-     * it into the aggregate — O(1) memory, no buffering of rows.
-     *
      * @param list<CompiledFilter> $compiledFilters
      * @return Result<mixed, Throwable>
      */
-    private function evaluate(LookupSource $source, SourceEvaluation $evaluation, array $compiledFilters): Result
-    {
-        $evaluation->annotate('aggregate', $source->aggregate);
+    private function evaluate(
+        LookupSource $source,
+        CompiledLookupResult $compiledResult,
+        SourceEvaluation $evaluation,
+        array $compiledFilters,
+    ): Result {
+        $table = $source->table;
+        $evaluation->annotate('result', $source->result->kind()->value);
 
-        if ($source->columns !== []) {
-            $evaluation->annotate('columns', $source->columns);
+        if ($source->result instanceof ProjectedResult) {
+            $evaluation->annotate('projection', $this->describeProjection($source->result->projection));
         }
 
-        // Child failures must reach CompiledSource's private failure channel,
-        // so resolve filter values before the package-owned I/O boundary.
         $resolvedFilters = $this->resolveFilters($compiledFilters, $evaluation);
         $stream = null;
 
         try {
-            $records = attempt(function () use ($source, &$stream): iterable {
-                // Read the CSV/TSV file from Flysystem as a stream
-                $stream = $this->filesystem->readStream($source->path);
+            $records = attempt(function () use ($table, &$stream): iterable {
+                $stream = $this->filesystem->readStream($table->path);
 
                 if ($stream === false) {
-                    throw new RuntimeException("Could not open file: {$source->path}");
+                    throw new RuntimeException("Could not open file: {$table->path}");
                 }
 
-                // Create CSV reader from the open stream resource
                 $reader = Reader::from($stream);
-                $reader->setDelimiter($source->delimiter);
+                $reader->setDelimiter($table->delimiter);
 
-                if ($source->hasHeader) {
+                if ($table->hasHeader) {
                     $reader->setHeaderOffset(0);
+                    $this->assertDeclaredHeaders($table, $reader->getHeader());
                 }
 
-                // Stream through records with memory-efficient processing
-                return $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
+                return $table->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
             });
 
             if ($records->isErr()) {
                 return $records;
             }
 
-            $aggregateState = attempt(fn() => AggregateFactory::for($source->aggregate));
-
-            if ($aggregateState->isErr()) {
-                return $aggregateState;
-            }
-
-            $aggregateState = $aggregateState->unwrap();
+            $selected = null;
+            $selectedRows = [];
+            $selectedOrder = null;
+            $count = 0;
+            $sum = 0.0;
+            $numericValues = 0;
 
             foreach ($records->unwrap() as $record) {
-                /** @var array<string, mixed> $record */
+                /** @var array<string|int, mixed> $record */
                 $csvRecord = CsvRecord::from($record);
                 $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
 
@@ -457,34 +421,230 @@ final class LookupExtension extends Extension
                     return $filterResult;
                 }
 
-                if ($filterResult->mapOr(false, fn(bool $v) => $v) === false) {
+                if ($filterResult->unwrap() === false) {
                     continue;
                 }
 
-                $processed = attempt(fn() => $aggregateState->process($csvRecord, $source->aggregateColumn));
+                if ($source->result instanceof ProjectedResult) {
+                    $accumulated = $this->selectRow(
+                        $table,
+                        $source->result,
+                        $compiledResult,
+                        $csvRecord,
+                        $selected,
+                        $selectedRows,
+                        $selectedOrder,
+                    );
 
-                if ($processed->isErr()) {
-                    return $processed;
+                    if ($accumulated->isErr()) {
+                        return $accumulated;
+                    }
+
+                    /** @var array{?CsvRecord, list<CsvRecord>, mixed, bool} $state */
+                    $state = $accumulated->unwrap();
+                    [$selected, $selectedRows, $selectedOrder, $earlyExit] = $state;
+
+                    if ($earlyExit) {
+                        break;
+                    }
+
+                    continue;
                 }
 
-                $aggregateState = $processed->unwrap();
+                $folded = $this->foldNumber($table, $source->result, $csvRecord, $count, $sum, $numericValues);
 
-                if ($aggregateState->canEarlyExit()) {
-                    break;
+                if ($folded->isErr()) {
+                    return $folded;
                 }
+
+                /** @var array{int, float, int} $numericState */
+                $numericState = $folded->unwrap();
+                [$count, $sum, $numericValues] = $numericState;
             }
 
-            $result = $this->admitProjection($source, $aggregateState->finalize($source->columns));
+            $evaluation->annotate('label', $table->path);
 
-            $evaluation->annotate('label', $source->path);
-
-            return $result;
+            return $source->result instanceof ProjectedResult
+                ? $this->finishProjection($table, $source->result, $selected, $selectedRows)
+                : $this->finishNumber($source->result, $count, $sum, $numericValues);
         } finally {
-            // Ensure stream is always closed
             if (is_resource($stream)) {
                 fclose($stream);
             }
         }
+    }
+
+    /** @return string|int|array<string, string|int> */
+    private function describeProjection(ValueProjection|RecordProjection $projection): string|int|array
+    {
+        if ($projection instanceof ValueProjection) {
+            return $projection->column;
+        }
+
+        return $projection->fields;
+    }
+
+    /** @param array<string> $header */
+    private function assertDeclaredHeaders(DelimitedTable $table, array $header): void
+    {
+        foreach ($table->columns as $column) {
+            if (! in_array($column->identity, $header, strict: true)) {
+                throw new RuntimeException(sprintf(
+                    'Column [%s] is declared by table [%s], but its header is missing.',
+                    $column->identity,
+                    $table->path,
+                ));
+            }
+        }
+    }
+
+    /**
+     * @param list<CsvRecord> $selectedRows
+     * @return Result<array{?CsvRecord, list<CsvRecord>, mixed, bool}, Throwable>
+     */
+    private function selectRow(
+        DelimitedTable $table,
+        ProjectedResult $result,
+        CompiledLookupResult $compiled,
+        CsvRecord $record,
+        ?CsvRecord $selected,
+        array $selectedRows,
+        mixed $selectedOrder,
+    ): Result {
+        if ($result->rows instanceof FirstRow) {
+            return Ok([$record, $selectedRows, $selectedOrder, true]);
+        }
+
+        if ($result->rows instanceof LastRow) {
+            return Ok([$record, $selectedRows, $selectedOrder, false]);
+        }
+
+        if ($result->rows instanceof AllRows) {
+            return Ok([$selected, [...$selectedRows, $record], $selectedOrder, false]);
+        }
+
+        $column = $table->requireDeclaration($result->rows->column);
+        $ordering = $compiled->requireOrdering();
+
+        return $this->admitColumn($table, $record, $column)
+            ->andThen(function (mixed $order) use (
+                $ordering,
+                $record,
+                $selected,
+                $selectedRows,
+                $selectedOrder,
+            ): Result {
+                if ($order === null) {
+                    return Ok([$selected, $selectedRows, $selectedOrder, false]);
+                }
+
+                if ($selected === null) {
+                    return Ok([$record, $selectedRows, $order, false]);
+                }
+
+                return $this->evaluateBoolean($ordering, $order, $selectedOrder)
+                    ->map(fn(bool $replace): array => $replace
+                        ? [$record, $selectedRows, $order, false]
+                        : [$selected, $selectedRows, $selectedOrder, false]);
+            });
+    }
+
+    /** @return Result<array{int, float, int}, Throwable> */
+    private function foldNumber(
+        DelimitedTable $table,
+        NumericResult $result,
+        CsvRecord $record,
+        int $count,
+        float $sum,
+        int $numericValues,
+    ): Result {
+        if ($result->fold instanceof CountRows) {
+            return Ok([$count + 1, $sum, $numericValues]);
+        }
+
+        $column = $table->requireDeclaration($result->fold->column);
+
+        return $this->admitColumn($table, $record, $column)
+            ->andThen(function (mixed $value) use ($count, $sum, $numericValues): Result {
+                if ($value === null) {
+                    return Ok([$count, $sum, $numericValues]);
+                }
+
+                if (! is_int($value) && ! is_float($value)) {
+                    return Err(new RuntimeException('A numeric fold admitted a non-numeric value.'));
+                }
+
+                return Ok([$count, $sum + $value, $numericValues + 1]);
+            });
+    }
+
+    /**
+     * @param list<CsvRecord> $selectedRows
+     * @return Result<mixed, Throwable>
+     */
+    private function finishProjection(
+        DelimitedTable $table,
+        ProjectedResult $result,
+        ?CsvRecord $selected,
+        array $selectedRows,
+    ): Result {
+        if ($result->rows instanceof AllRows) {
+            return Result::collect(map(
+                $selectedRows,
+                fn(CsvRecord $record): Result => $this->project($table, $result->projection, $record),
+            ));
+        }
+
+        return $selected === null ? Ok(null) : $this->project($table, $result->projection, $selected);
+    }
+
+    /** @return Result<mixed, Throwable> */
+    private function project(
+        DelimitedTable $table,
+        ValueProjection|RecordProjection $projection,
+        CsvRecord $record,
+    ): Result {
+        if ($projection instanceof ValueProjection) {
+            return $this->admitColumn(
+                $table,
+                $record,
+                $table->requireDeclaration($projection->column),
+            );
+        }
+
+        $projected = [];
+
+        foreach ($projection->fields as $field => $identity) {
+            $column = $table->requireDeclaration($identity);
+
+            $value = $this->admitColumn($table, $record, $column);
+
+            if ($value->isErr()) {
+                return $value;
+            }
+
+            $projected[$field] = $value->unwrap();
+        }
+
+        return Ok($projected);
+    }
+
+    /** @return Result<int|float|null, Throwable> */
+    private function finishNumber(NumericResult $result, int $count, float $sum, int $numericValues): Result
+    {
+        if ($result->fold instanceof CountRows) {
+            return Ok($count);
+        }
+
+        if ($numericValues === 0) {
+            return Ok(null);
+        }
+
+        if ($result->fold instanceof SumColumn) {
+            return Ok($sum);
+        }
+
+        return Ok($sum / $numericValues);
     }
 
     /**
@@ -497,7 +657,7 @@ final class LookupExtension extends Extension
     }
 
     /**
-     * @param array<ResolvedFilter> $resolvedFilters
+     * @param list<ResolvedFilter> $resolvedFilters
      * @return Result<bool, Throwable>
      */
     private function matchesAllFilters(CsvRecord $record, array $resolvedFilters): Result
@@ -509,7 +669,7 @@ final class LookupExtension extends Extension
                 return $result;
             }
 
-            if ($result->mapOr(false, fn(bool $v) => $v) === false) {
+            if ($result->unwrap() === false) {
                 return Ok(false);
             }
         }

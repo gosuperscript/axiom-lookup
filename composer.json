@@ -1,6 +1,6 @@
 {
     "name": "gosuperscript/axiom-lookup",
-    "description": "A PHP library for querying CSV/TSV files with streaming, dynamic filtering, aggregate functions, and range-based banding.",
+    "description": "Typed, streaming lookups over CSV, TSV, and other delimited files for Axiom.",
     "type": "library",
     "license": "proprietary",
     "keywords": [
@@ -8,7 +8,7 @@
         "csv",
         "tsv",
         "lookup",
-        "aggregation",
+        "projection",
         "streaming",
         "filtering"
     ],
@@ -47,7 +47,7 @@
             "@test:infection"
         ],
         "bench": "vendor/bin/phpbench run --report=default",
-        "bench:aggregate": "vendor/bin/phpbench run --group=aggregate --report=default",
+        "bench:result": "vendor/bin/phpbench run --group=result --report=default",
         "bench:memory": "vendor/bin/phpbench run --group=memory --report=default"
     },
     "config": {
