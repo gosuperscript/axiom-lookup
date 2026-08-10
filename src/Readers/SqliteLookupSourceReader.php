@@ -142,10 +142,11 @@ final readonly class SqliteLookupSourceReader
         );
         $this->cache->move($partial, $key);
 
-        $opened = $this->open($local, $source->path);
-        assert($opened !== null);
+        // A just-built artefact must speak for itself; if it cannot, the
+        // exception reaches findRecords' catch and the scan answers.
+        $pdo = $this->connect($local);
 
-        return $opened;
+        return [$pdo, SqliteLookupDescription::read($pdo, $source->path)];
     }
 
     /**
@@ -181,13 +182,20 @@ final readonly class SqliteLookupSourceReader
     private function open(string $local, string $path): ?array
     {
         try {
-            $pdo = new PDO('sqlite:' . $local);
-            $pdo->exec('PRAGMA query_only = ON');
+            $pdo = $this->connect($local);
 
             return [$pdo, SqliteLookupDescription::read($pdo, $path)];
         } catch (Throwable) {
             return null;
         }
+    }
+
+    private function connect(string $local): PDO
+    {
+        $pdo = new PDO('sqlite:' . $local);
+        $pdo->exec('PRAGMA query_only = ON');
+
+        return $pdo;
     }
 
     /**
