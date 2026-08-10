@@ -381,8 +381,11 @@ final class LookupExtension extends Extension
         $probes = [];
 
         foreach ($resolvedFilters as $resolved) {
-            if ($resolved->probeColumn !== null && is_string($resolved->value)) {
-                $probes[$resolved->probeColumn] = $resolved->value;
+            $probe = $resolved->probe();
+
+            if ($probe !== null) {
+                [$column, $value] = $probe;
+                $probes[$column] = $value;
             }
         }
 

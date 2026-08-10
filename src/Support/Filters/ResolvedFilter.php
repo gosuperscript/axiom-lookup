@@ -32,4 +32,20 @@ final readonly class ResolvedFilter
     {
         return ($this->matches)($record, $this->value);
     }
+
+    /**
+     * The probe this filter contributes: the column an indexed reader may
+     * seek, paired with the resolved value to seek there. Null when the
+     * filter is not probe-eligible, or when the value did not resolve to
+     * the raw string the byte-equality domain requires — both halves must
+     * hold, so they are decided here, together, once.
+     *
+     * @return array{int|string, string}|null
+     */
+    public function probe(): ?array
+    {
+        return $this->probeColumn !== null && is_string($this->value)
+            ? [$this->probeColumn, $this->value]
+            : null;
+    }
 }
