@@ -42,6 +42,10 @@ jobs:
       - name: Execute mutation tests
         run: composer test:infection
 
+      - name: Show surviving and uncovered mutants
+        if: failure()
+        run: cat build/infection.log
+
   types:
     runs-on: ubuntu-latest
     timeout-minutes: 5
