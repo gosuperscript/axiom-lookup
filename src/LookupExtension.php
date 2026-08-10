@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup;
 
-use League\Csv\Reader;
 use League\Flysystem\FilesystemOperator;
-use RuntimeException;
 use Superscript\Axiom\BoundOperation;
 use Superscript\Axiom\CompiledSource;
 use Superscript\Axiom\Extension;
+use Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\SqliteLookupSourceReader;
+use Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
@@ -44,7 +46,10 @@ use function Superscript\Monads\Result\Ok;
  * streaming {@see CompiledSource}. The {@see FilesystemOperator} the read needs
  * is injected here — the live collaborator the old container wired into the
  * resolver — and captured in the compiled program, so the persisted
- * `LookupSource` tree carries no filesystem of its own.
+ * `LookupSource` tree carries no filesystem of its own. The reading itself
+ * goes through a {@see LookupSourceReader}; by default a
+ * {@see StrategyLookupSourceReader} that answers indexed equality lookups
+ * from the CSV's SQLite sidecar and streams everything else.
  *
  * ```php
  * $dialect = Dialect::core()->with(new LookupExtension($filesystem));
@@ -60,7 +65,15 @@ use function Superscript\Monads\Result\Ok;
  */
 final class LookupExtension extends Extension
 {
-    public function __construct(private readonly FilesystemOperator $filesystem) {}
+    private readonly LookupSourceReader $reader;
+
+    public function __construct(FilesystemOperator $filesystem, ?LookupSourceReader $reader = null)
+    {
+        $this->reader = $reader ?? new StrategyLookupSourceReader(
+            new SqliteLookupSourceReader($filesystem),
+            new FullCsvScanLookupSourceReader($filesystem),
+        );
+    }
 
     public function sourceCompilers(): array
     {
@@ -133,6 +146,15 @@ final class LookupExtension extends Extension
         $cellType = $this->columnType($source, $filter->column);
         $operation = $this->booleanInfix($compilation, $cellType, $filter->operator, $value->returns);
 
+        // An indexed reader may seek this column only where SQLite's TEXT
+        // comparison and the dialect's `==` agree: raw string equality. The
+        // type bound is not only about matching — narrowing decides which rows
+        // the pipeline reads at all, and a type that can reject a cell would
+        // have its failure skipped along with the row.
+        $probeColumn = $filter->operator === '==' && $cellType::class === StringType::class
+            ? $filter->column
+            : null;
+
         return new CompiledFilter(
             $value,
             fn(CsvRecord $record, mixed $resolved): Result => $this->matchValue(
@@ -142,6 +164,7 @@ final class LookupExtension extends Extension
                 $resolved,
                 $operation,
             ),
+            $probeColumn,
         );
     }
 
@@ -287,78 +310,83 @@ final class LookupExtension extends Extension
         // Child failures must reach CompiledSource's private failure channel,
         // so resolve filter values before the package-owned I/O boundary.
         $resolvedFilters = $this->resolveFilters($compiledFilters, $evaluation);
-        $stream = null;
 
-        try {
-            $records = attempt(function () use ($source, &$stream): iterable {
-                // Read the CSV/TSV file from Flysystem as a stream
-                $stream = $this->filesystem->readStream($source->path);
+        $aggregateState = attempt(fn() => AggregateFactory::for($source->aggregate));
 
-                if ($stream === false) {
-                    throw new RuntimeException("Could not open file: {$source->path}");
-                }
+        if ($aggregateState->isErr()) {
+            return $aggregateState;
+        }
 
-                // Create CSV reader from the open stream resource
-                $reader = Reader::from($stream);
-                $reader->setDelimiter($source->delimiter);
+        $aggregateState = $aggregateState->unwrap();
 
-                if ($source->hasHeader) {
-                    $reader->setHeaderOffset(0);
-                }
+        // The reader owns the file: which strategy answers (a SQLite probe,
+        // the full CSV stream) only decides where the file is read — every
+        // record it yields still passes the full filter pipeline below.
+        $records = attempt(fn(): iterable => $this->reader->findRecords(
+            $source,
+            $this->equalityProbes($resolvedFilters),
+            fn(string $scan) => $evaluation->annotate('scan', $scan),
+        ));
 
-                // Stream through records with memory-efficient processing
-                return $source->hasHeader ? $reader->getRecords() : $reader->getRecords([]);
-            });
+        if ($records->isErr()) {
+            return $records;
+        }
 
-            if ($records->isErr()) {
-                return $records;
+        foreach ($records->unwrap() as $record) {
+            /** @var array<string, mixed> $record */
+            $csvRecord = CsvRecord::from($record);
+            $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
+
+            if ($filterResult->isErr()) {
+                return $filterResult;
             }
 
-            $aggregateState = attempt(fn() => AggregateFactory::for($source->aggregate));
-
-            if ($aggregateState->isErr()) {
-                return $aggregateState;
+            if ($filterResult->mapOr(false, fn(bool $v) => $v) === false) {
+                continue;
             }
 
-            $aggregateState = $aggregateState->unwrap();
+            $processed = attempt(fn() => $aggregateState->process($csvRecord, $source->aggregateColumn));
 
-            foreach ($records->unwrap() as $record) {
-                /** @var array<string, mixed> $record */
-                $csvRecord = CsvRecord::from($record);
-                $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
-
-                if ($filterResult->isErr()) {
-                    return $filterResult;
-                }
-
-                if ($filterResult->mapOr(false, fn(bool $v) => $v) === false) {
-                    continue;
-                }
-
-                $processed = attempt(fn() => $aggregateState->process($csvRecord, $source->aggregateColumn));
-
-                if ($processed->isErr()) {
-                    return $processed;
-                }
-
-                $aggregateState = $processed->unwrap();
-
-                if ($aggregateState->canEarlyExit()) {
-                    break;
-                }
+            if ($processed->isErr()) {
+                return $processed;
             }
 
-            $result = $aggregateState->finalize($source->columns);
+            $aggregateState = $processed->unwrap();
 
-            $evaluation->annotate('label', $source->path);
-
-            return Ok($result);
-        } finally {
-            // Ensure stream is always closed
-            if (is_resource($stream)) {
-                fclose($stream);
+            if ($aggregateState->canEarlyExit()) {
+                break;
             }
         }
+
+        $result = $aggregateState->finalize($source->columns);
+
+        $evaluation->annotate('label', $source->path);
+
+        return Ok($result);
+    }
+
+    /**
+     * The values an indexed reader may seek on, keyed by column. Each filter
+     * already carries the column it is probe-eligible on (settled at compile
+     * time); all that is left is the value this invocation produced, and only
+     * a string one — the byte-equality domain the artefact indexes. A reader
+     * may use these to narrow where the file is read, never what the lookup
+     * means; any column the probes skip is answered by the filter pipeline.
+     *
+     * @param  list<ResolvedFilter>  $resolvedFilters
+     * @return array<string|int, string>
+     */
+    private function equalityProbes(array $resolvedFilters): array
+    {
+        $probes = [];
+
+        foreach ($resolvedFilters as $resolved) {
+            if ($resolved->probeColumn !== null && is_string($resolved->value)) {
+                $probes[$resolved->probeColumn] = $resolved->value;
+            }
+        }
+
+        return $probes;
     }
 
     /**

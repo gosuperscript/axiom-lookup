@@ -31,6 +31,13 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(Aggregates\First::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
 #[UsesClass(\Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Readers\SqliteLookupSourceReader::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteSidecar::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteLookupConverter::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteLookupFormat::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteLookupDescription::class)]
 final class ExecutionObserverTest extends TestCase
 {
     private Filesystem $filesystem;
@@ -58,13 +65,17 @@ final class ExecutionObserverTest extends TestCase
     /**
      * @param array<string|int> $columns
      */
-    private function lookup(string $aggregate = 'first', array $columns = ['age']): LookupSource
-    {
+    private function lookup(
+        string $aggregate = 'first',
+        array $columns = ['age'],
+        string|int|null $index = null,
+    ): LookupSource {
         return new LookupSource(
             path: 'users.csv',
             filters: [new ValueFilter('name', new StaticSource('Alice'))],
             columns: $columns,
             aggregate: $aggregate,
+            index: $index,
         );
     }
 
@@ -101,6 +112,40 @@ final class ExecutionObserverTest extends TestCase
     }
 
     #[Test]
+    public function it_annotates_the_scan_that_answered(): void
+    {
+        $this->execute($this->lookup());
+
+        $this->assertSame('full-stream', $this->observer->annotations['scan']);
+    }
+
+    #[Test]
+    public function an_equality_on_the_declared_index_reaches_the_sidecar_probe(): void
+    {
+        $this->execute($this->lookup(index: 'name'));
+
+        $this->assertSame('sqlite-index', $this->observer->annotations['scan']);
+    }
+
+    #[Test]
+    public function the_index_probe_survives_other_filters_in_front_of_it(): void
+    {
+        // The indexed filter is deliberately not the first: every equality
+        // contributes its probe, and the sidecar picks the one it can serve.
+        $this->execute(new LookupSource(
+            path: 'users.csv',
+            filters: [
+                new ValueFilter('city', new StaticSource('NYC')),
+                new ValueFilter('name', new StaticSource('Alice')),
+            ],
+            columns: ['age'],
+            index: 'name',
+        ));
+
+        $this->assertSame('sqlite-index', $this->observer->annotations['scan']);
+    }
+
+    #[Test]
     public function it_attributes_annotations_to_the_lookup_source(): void
     {
         $this->execute($this->lookup());
@@ -110,8 +155,8 @@ final class ExecutionObserverTest extends TestCase
             fn($event): bool => $event->node->sourceType === LookupSource::class,
         ));
 
-        $this->assertCount(3, $annotations);
-        $this->assertSame(['aggregate', 'columns', 'label'], array_column($annotations, 'key'));
+        $this->assertCount(4, $annotations);
+        $this->assertSame(['aggregate', 'columns', 'scan', 'label'], array_column($annotations, 'key'));
         foreach ($annotations as $event) {
             $this->assertSame(LookupSource::class, $event->node->sourceType);
         }

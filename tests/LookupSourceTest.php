@@ -58,6 +58,10 @@ use function Superscript\Monads\Result\Err;
 #[UsesClass(Aggregates\All::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
 #[UsesClass(Aggregates\AggregateKind::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Readers\SqliteLookupSourceReader::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader::class)]
+#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteSidecar::class)]
 class LookupSourceTest extends TestCase
 {
     private Filesystem $filesystem;
