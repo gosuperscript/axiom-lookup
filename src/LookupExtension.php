@@ -10,8 +10,6 @@ use Superscript\Axiom\CompiledSource;
 use Superscript\Axiom\Extension;
 use Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader;
 use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
-use Superscript\Axiom\Lookup\Readers\SqliteLookupSourceReader;
-use Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader;
 use Superscript\Axiom\Lookup\Support\Aggregates\AggregateFactory;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\Filter;
@@ -47,9 +45,9 @@ use function Superscript\Monads\Result\Ok;
  * is injected here — the live collaborator the old container wired into the
  * resolver — and captured in the compiled program, so the persisted
  * `LookupSource` tree carries no filesystem of its own. The reading itself
- * goes through a {@see LookupSourceReader}; by default a
- * {@see StrategyLookupSourceReader} that answers indexed equality lookups
- * from the CSV's SQLite sidecar and streams everything else.
+ * goes through a {@see LookupSourceReader}; by default the full CSV stream.
+ * A host may inject an indexed reader (a database artefact, any store that
+ * honours the reader contract) to answer equality probes without a scan.
  *
  * ```php
  * $dialect = Dialect::core()->with(new LookupExtension($filesystem));
@@ -69,10 +67,7 @@ final class LookupExtension extends Extension
 
     public function __construct(FilesystemOperator $filesystem, ?LookupSourceReader $reader = null)
     {
-        $this->reader = $reader ?? new StrategyLookupSourceReader(
-            new SqliteLookupSourceReader($filesystem),
-            new FullCsvScanLookupSourceReader($filesystem),
-        );
+        $this->reader = $reader ?? new FullCsvScanLookupSourceReader($filesystem);
     }
 
     public function sourceCompilers(): array
@@ -146,7 +141,7 @@ final class LookupExtension extends Extension
         $cellType = $this->columnType($source, $filter->column);
         $operation = $this->booleanInfix($compilation, $cellType, $filter->operator, $value->returns);
 
-        // An indexed reader may seek this column only where SQLite's TEXT
+        // An indexed reader may seek this column only where an index's byte
         // comparison and the dialect's `==` agree: raw string equality. The
         // type bound is not only about matching — narrowing decides which rows
         // the pipeline reads at all, and a type that can reject a cell would
@@ -319,7 +314,7 @@ final class LookupExtension extends Extension
 
         $aggregateState = $aggregateState->unwrap();
 
-        // The reader owns the file: which strategy answers (a SQLite probe,
+        // The reader owns the file: which strategy answers (an indexed probe,
         // the full CSV stream) only decides where the file is read — every
         // record it yields still passes the full filter pipeline below.
         $records = attempt(fn(): iterable => $this->reader->findRecords(

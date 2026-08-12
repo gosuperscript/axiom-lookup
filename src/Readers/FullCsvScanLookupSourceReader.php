@@ -15,8 +15,8 @@ use Throwable;
 /**
  * The baseline reader: stream every record of the file, one at a time, in
  * O(1) memory. It is total — any well-formed lookup can be answered this
- * way — which is what lets the strategy route only the files it positively
- * recognises elsewhere and still be correct.
+ * way — which is what lets an indexed reader serve only the lookups it
+ * positively recognises and hand everything else back here, still correct.
  */
 final readonly class FullCsvScanLookupSourceReader implements LookupSourceReader
 {

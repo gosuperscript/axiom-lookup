@@ -25,10 +25,11 @@ use Superscript\Axiom\Types\Type;
 final readonly class LookupSource implements Source
 {
     /**
-     * `$index` names the column `==` lookups seek on, and is the opt-in for
-     * the SQLite sidecar: when set, the reader may answer an equality on it
-     * from the sidecar index instead of streaming the whole file. Purely an
-     * access-path hint — declaring it never changes what a lookup returns.
+     * `$index` names the column `==` lookups seek on: when set, an indexed
+     * {@see \Superscript\Axiom\Lookup\Readers\LookupSourceReader} may answer
+     * an equality on it from an index instead of streaming the whole file.
+     * Purely an access-path hint — declaring it never changes what a lookup
+     * returns.
      *
      * @param  array<Filter>  $filters
      * @param  array<string|int>  $columns

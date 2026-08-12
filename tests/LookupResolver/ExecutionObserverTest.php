@@ -18,6 +18,7 @@ use Superscript\Axiom\Lookup\LookupSource;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
+use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Lookup\Tests\Fixtures\SpyObserver;
 use Superscript\Axiom\Sources\StaticSource;
@@ -32,12 +33,6 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(Aggregates\AggregateFactory::class)]
 #[UsesClass(\Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind::class)]
 #[UsesClass(\Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader::class)]
-#[UsesClass(\Superscript\Axiom\Lookup\Readers\SqliteLookupSourceReader::class)]
-#[UsesClass(\Superscript\Axiom\Lookup\Readers\StrategyLookupSourceReader::class)]
-#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteSidecar::class)]
-#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteLookupConverter::class)]
-#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteLookupFormat::class)]
-#[UsesClass(\Superscript\Axiom\Lookup\Support\Sqlite\SqliteLookupDescription::class)]
 final class ExecutionObserverTest extends TestCase
 {
     private Filesystem $filesystem;
@@ -52,11 +47,14 @@ final class ExecutionObserverTest extends TestCase
         $this->filesystem = new Filesystem($adapter);
     }
 
-    private function execute(LookupSource $source, bool $withObserver = true): void
-    {
+    private function execute(
+        LookupSource $source,
+        bool $withObserver = true,
+        ?LookupSourceReader $reader = null,
+    ): void {
         $expression = new Expression(
             $source,
-            dialect: Dialect::core()->with(new LookupExtension($this->filesystem)),
+            dialect: Dialect::core()->with(new LookupExtension($this->filesystem, $reader)),
         );
 
         $expression->compile()->unwrap()(observer: $withObserver ? $this->observer : null);
@@ -120,18 +118,36 @@ final class ExecutionObserverTest extends TestCase
     }
 
     #[Test]
-    public function an_equality_on_the_declared_index_reaches_the_sidecar_probe(): void
+    public function an_equality_filter_hands_its_probe_to_the_injected_reader(): void
     {
-        $this->execute($this->lookup(index: 'name'));
+        $reader = new RecordingReader();
 
-        $this->assertSame('sqlite-index', $this->observer->annotations['scan']);
+        $this->execute($this->lookup(index: 'name'), reader: $reader);
+
+        $this->assertSame(['name' => 'Alice'], $reader->probes);
+        $this->assertSame('recorded', $this->observer->annotations['scan']);
     }
 
     #[Test]
-    public function the_index_probe_survives_other_filters_in_front_of_it(): void
+    public function only_equality_filters_are_probe_eligible(): void
     {
-        // The indexed filter is deliberately not the first: every equality
-        // contributes its probe, and the sidecar picks the one it can serve.
+        $reader = new RecordingReader();
+
+        $this->execute(new LookupSource(
+            path: 'users.csv',
+            filters: [new ValueFilter('name', new StaticSource('Alice'), '!=')],
+            columns: ['age'],
+            index: 'name',
+        ), reader: $reader);
+
+        $this->assertSame([], $reader->probes);
+    }
+
+    #[Test]
+    public function every_string_equality_contributes_its_probe_regardless_of_order(): void
+    {
+        $reader = new RecordingReader();
+
         $this->execute(new LookupSource(
             path: 'users.csv',
             filters: [
@@ -140,9 +156,9 @@ final class ExecutionObserverTest extends TestCase
             ],
             columns: ['age'],
             index: 'name',
-        ));
+        ), reader: $reader);
 
-        $this->assertSame('sqlite-index', $this->observer->annotations['scan']);
+        $this->assertSame(['city' => 'NYC', 'name' => 'Alice'], $reader->probes);
     }
 
     #[Test]
@@ -172,5 +188,20 @@ final class ExecutionObserverTest extends TestCase
 
         $this->assertTrue($result->isOk());
         $this->assertSame('30', $result->unwrap()->unwrap());
+    }
+}
+
+/** Captures the probes the extension derives; yields one matching record. */
+final class RecordingReader implements LookupSourceReader
+{
+    /** @var array<int|string, string> */
+    public array $probes = [];
+
+    public function findRecords(LookupSource $source, array $probes, ?\Closure $scanned = null): iterable
+    {
+        $this->probes = $probes;
+        $scanned?->__invoke('recorded');
+
+        return [['name' => 'Alice', 'city' => 'NYC', 'age' => '30']];
     }
 }

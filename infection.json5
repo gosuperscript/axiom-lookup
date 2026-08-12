@@ -28,35 +28,20 @@
         ".*if \\(\\$stream === false\\).*",
       ],
     },
-    // Stream closing and the build-time PDO staging (no journal, no fsync,
-    // one transaction) are invisible to behaviour by design: removing them
-    // changes resource hygiene or build speed, never a lookup's answer.
+    // Closing the stream is resource hygiene, invisible to a lookup's answer.
     "MethodCallRemoval": {
       "ignoreSourceCodeByRegex": [
-        ".*PRAGMA.*",
-        ".*beginTransaction.*",
-        ".*->commit\\(\\).*",
         ".*fclose\\(\\$stream\\).*",
-      ],
-    },
-    // Both array_values() calls reshape an already list-shaped map for the
-    // type system; unwrapping them cannot change behaviour.
-    "UnwrapArrayValues": {
-      "ignoreSourceCodeByRegex": [
-        ".*array_values\\(\\$reader->getHeader\\(\\)\\).*",
-        ".*array_values\\(\\$names\\).*",
       ],
     },
     "Finally_": {
       "ignore": [
         "Superscript\\Axiom\\Lookup\\Readers\\FullCsvScanLookupSourceReader::readAndClose",
-        "Superscript\\Axiom\\Lookup\\Support\\Sqlite\\SqliteSidecar::build",
       ],
     },
     "UnwrapFinally": {
       "ignore": [
         "Superscript\\Axiom\\Lookup\\Readers\\FullCsvScanLookupSourceReader::readAndClose",
-        "Superscript\\Axiom\\Lookup\\Support\\Sqlite\\SqliteSidecar::build",
       ],
     },
   },
