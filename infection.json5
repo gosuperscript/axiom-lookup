@@ -28,14 +28,20 @@
         ".*if \\(\\$stream === false\\).*",
       ],
     },
+    // Closing the stream is resource hygiene, invisible to a lookup's answer.
+    "MethodCallRemoval": {
+      "ignoreSourceCodeByRegex": [
+        ".*fclose\\(\\$stream\\).*",
+      ],
+    },
     "Finally_": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
+        "Superscript\\Axiom\\Lookup\\Readers\\FullCsvScanLookupSourceReader::readAndClose",
       ],
     },
     "UnwrapFinally": {
       "ignore": [
-        "Superscript\\Axiom\\Lookup\\LookupExtension::evaluate",
+        "Superscript\\Axiom\\Lookup\\Readers\\FullCsvScanLookupSourceReader::readAndClose",
       ],
     },
   },

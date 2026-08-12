@@ -4,7 +4,8 @@ A high-performance PHP library for querying CSV/TSV files with streaming, dynami
 
 ## Features
 
-- **Memory-Efficient Streaming**: O(1) memory complexity - processes records one-at-a-time
+- **Memory-Efficient Streaming**: O(1) memory complexity with the default reader - processes records one-at-a-time
+- **Pluggable Reads**: a host may inject a `LookupSourceReader` that answers indexed equality lookups from its own store, see [Indexed reads](#indexed-reads-the-reader-seam)
 - **Eight Aggregate Functions**: `first`, `last`, `min`, `max`, `count`, `sum`, `avg`, `all` — enumerable at runtime, see [Aggregates](#aggregates)
 - **Explicit Filter API**: `ValueFilter` and `RangeFilter` for clear, self-documenting code
 - **Range-Based Banding**: Support for scenarios like tax brackets, premium tiers, shipping rates
@@ -178,6 +179,23 @@ $electronics = $program(['category' => 'Electronics']);
 $books       = $program->call(['category' => 'Books']);
 ```
 
+## Indexed reads (the reader seam)
+
+By default every lookup streams its whole file. A host that keeps an indexed copy of a lookup file — a database artifact, for instance — can answer equality lookups from it instead by injecting a `LookupSourceReader`:
+
+```php
+new LookupExtension($filesystem);           // default: full CSV stream
+new LookupExtension($filesystem, $reader);  // host-provided indexed reader
+```
+
+The reader's contract: yield a **superset** of the records the filter pipeline would have matched in a full scan, in the file's **original row order**. Every yielded record still passes the full filter pipeline, so a reader may only change where the file is read — never a lookup's answer. A reader may fail eagerly or lazily (mid-iteration); both surface as the lookup's failure `Result`.
+
+`LookupSource` accepts an optional `index` naming the column an indexed reader may seek on — purely an access-path hint, persisted with the source; declaring it never changes results. Each invocation hands the reader its **probes**: the resolved value of every `==` filter on a `String`-typed column, keyed by column. Skipping a probe is always safe; the filter pipeline still applies every filter.
+
+Probes are byte-equality seeks. They are only sound where the dialect's `String == String` is raw byte equality (the core rule); a host whose dialect overloads that comparison must not serve probes from a byte-built index.
+
+For observability the evaluation annotates `scan` with the strategy that answered (`full-stream`, or the indexed reader's own label), at most once, in a stable position before `label`.
+
 ## Typed filters and operators
 
 Filters are serialisable descriptions. During compilation, `LookupExtension` compiles each filter value and binds its operator from the expression's composed dialect. The resulting operation is reused for every row; filters do not contain a resolver and do not reimplement comparisons at runtime.
@@ -280,7 +298,7 @@ composer bench:memory       # Test memory efficiency
 
 ## Performance Characteristics
 
-- **Memory**: constant usage regardless of file size (single-pass streaming)
+- **Memory**: with the default full-scan reader, constant usage regardless of file size (single-pass streaming); an injected indexed reader owns its own profile
 - **Early Exit**: `first` aggregate stops after the first match
 - **Scalability**: Linear time scaling with row count
 - **Validated**: Comprehensive benchmarks with files up to 100k rows
