@@ -29,11 +29,12 @@ final readonly class LookupSource implements Source
      * {@see \Superscript\Axiom\Lookup\Readers\LookupSourceReader} may answer
      * an equality on it from an index instead of streaming the whole file.
      * Purely an access-path hint — declaring it never changes what a lookup
-     * returns.
+     * returns — and only sound where the dialect's `String == String` is raw
+     * byte equality (see the reader interface's precondition).
      *
-     * @param  array<Filter>  $filters
-     * @param  array<string|int>  $columns
-     * @param  array<string|int, Type>  $schema
+     * @param array<Filter> $filters
+     * @param array<string|int> $columns
+     * @param array<string|int, Type> $schema
      */
     public function __construct(
         public string $path,

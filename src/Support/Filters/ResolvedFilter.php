@@ -11,18 +11,18 @@ use Throwable;
 
 /**
  * A dialect-bound row predicate paired with the value its Source produced
- * once, before the row loop. The value is readable so the extension can steer
- * I/O by it, and it carries the column that value may be sought on — the two
- * halves of a probe travel together, so no caller has to re-pair them.
+ * once, before the row loop. It also carries the column that value may be
+ * sought on — the two halves of a probe travel together, exposed only
+ * through {@see probe()}, so no caller has to re-pair them.
  */
 final readonly class ResolvedFilter
 {
     public function __construct(
-        public mixed $value,
+        private mixed $value,
         /** @var Closure(CsvRecord, mixed): Result<bool, Throwable> */
         private Closure $matches,
         /** The column an indexed reader may seek this value on; null when the filter is not probe-eligible. */
-        public string|int|null $probeColumn = null,
+        private string|int|null $probeColumn = null,
     ) {}
 
     /**

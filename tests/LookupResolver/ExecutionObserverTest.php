@@ -4,21 +4,23 @@ declare(strict_types=1);
 
 namespace Superscript\Axiom\Lookup\Tests\LookupResolver;
 
+use Closure;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Superscript\Axiom\Dialect;
 use Superscript\Axiom\Expression;
 use Superscript\Axiom\Lookup\CsvRecord;
 use Superscript\Axiom\Lookup\LookupExtension;
 use Superscript\Axiom\Lookup\LookupSource;
+use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
 use Superscript\Axiom\Lookup\Support\Aggregates;
 use Superscript\Axiom\Lookup\Support\Filters\CompiledFilter;
 use Superscript\Axiom\Lookup\Support\Filters\ResolvedFilter;
-use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
 use Superscript\Axiom\Lookup\Support\Filters\ValueFilter;
 use Superscript\Axiom\Lookup\Tests\Fixtures\SpyObserver;
 use Superscript\Axiom\Sources\StaticSource;
@@ -30,6 +32,7 @@ use Superscript\Axiom\Sources\StaticSource;
 #[UsesClass(CompiledFilter::class)]
 #[UsesClass(ResolvedFilter::class)]
 #[UsesClass(Aggregates\First::class)]
+#[UsesClass(Aggregates\Count::class)]
 #[UsesClass(Aggregates\AggregateFactory::class)]
 #[UsesClass(\Superscript\Axiom\Lookup\Support\Aggregates\AggregateKind::class)]
 #[UsesClass(\Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader::class)]
@@ -179,6 +182,31 @@ final class ExecutionObserverTest extends TestCase
     }
 
     #[Test]
+    public function a_reader_failing_during_iteration_lands_in_the_failure_result(): void
+    {
+        // `count` folds every record, so the fold outlives the first yield
+        // and meets the throw mid-iteration — after attempt() has returned.
+        $source = $this->lookup(aggregate: 'count');
+
+        $result = (new Expression(
+            $source,
+            dialect: Dialect::core()->with(new LookupExtension($this->filesystem, new LazilyFailingReader())),
+        ))->compile()->unwrap()();
+
+        $this->assertTrue($result->isErr());
+        $this->assertSame('The file disappeared mid-read.', $result->unwrapErr()->getMessage());
+    }
+
+    #[Test]
+    public function a_reader_that_never_reports_leaves_no_scan_annotation(): void
+    {
+        $this->execute($this->lookup(), reader: new SilentReader());
+
+        $this->assertArrayNotHasKey('scan', $this->observer->annotations);
+        $this->assertSame('users.csv', $this->observer->annotations['label']);
+    }
+
+    #[Test]
     public function it_works_without_an_observer(): void
     {
         $source = $this->lookup();
@@ -197,11 +225,31 @@ final class RecordingReader implements LookupSourceReader
     /** @var array<int|string, string> */
     public array $probes = [];
 
-    public function findRecords(LookupSource $source, array $probes, ?\Closure $scanned = null): iterable
+    public function findRecords(LookupSource $source, array $probes, ?Closure $scanned = null): iterable
     {
         $this->probes = $probes;
         $scanned?->__invoke('recorded');
 
+        return [['name' => 'Alice', 'city' => 'NYC', 'age' => '30']];
+    }
+}
+
+/** Fails only once iterated — a generator body runs on advance, not on call. */
+final class LazilyFailingReader implements LookupSourceReader
+{
+    public function findRecords(LookupSource $source, array $probes, ?Closure $scanned = null): iterable
+    {
+        yield ['name' => 'Alice', 'city' => 'NYC', 'age' => '30'];
+
+        throw new RuntimeException('The file disappeared mid-read.');
+    }
+}
+
+/** Yields records but never reports which strategy answered. */
+final class SilentReader implements LookupSourceReader
+{
+    public function findRecords(LookupSource $source, array $probes, ?Closure $scanned = null): iterable
+    {
         return [['name' => 'Alice', 'city' => 'NYC', 'age' => '30']];
     }
 }

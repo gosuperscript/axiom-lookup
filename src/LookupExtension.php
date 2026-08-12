@@ -7,6 +7,7 @@ namespace Superscript\Axiom\Lookup;
 use League\Flysystem\FilesystemOperator;
 use Superscript\Axiom\BoundOperation;
 use Superscript\Axiom\CompiledSource;
+use Superscript\Axiom\Exceptions\EvaluationAborted;
 use Superscript\Axiom\Extension;
 use Superscript\Axiom\Lookup\Readers\FullCsvScanLookupSourceReader;
 use Superscript\Axiom\Lookup\Readers\LookupSourceReader;
@@ -36,6 +37,7 @@ use function Psl\Type\instance_of;
 use function Psl\Vec\map;
 use function Superscript\Monads\Option\None;
 use function Superscript\Monads\Result\attempt;
+use function Superscript\Monads\Result\Err;
 use function Superscript\Monads\Result\Ok;
 
 /**
@@ -145,7 +147,11 @@ final class LookupExtension extends Extension
         // comparison and the dialect's `==` agree: raw string equality. The
         // type bound is not only about matching — narrowing decides which rows
         // the pipeline reads at all, and a type that can reject a cell would
-        // have its failure skipped along with the row.
+        // have its failure skipped along with the row. Eligibility reads the
+        // operator token, not the rule the dialect bound (the compilation
+        // does not expose it); a dialect that overloads String == String
+        // must not serve probes — the reader interface owns that
+        // precondition.
         $probeColumn = $filter->operator === '==' && $cellType::class === StringType::class
             ? $filter->column
             : null;
@@ -314,46 +320,70 @@ final class LookupExtension extends Extension
 
         $aggregateState = $aggregateState->unwrap();
 
+        $scan = new class {
+            public ?string $strategy = null;
+        };
+
         // The reader owns the file: which strategy answers (an indexed probe,
         // the full CSV stream) only decides where the file is read — every
         // record it yields still passes the full filter pipeline below.
         $records = attempt(fn(): iterable => $this->reader->findRecords(
             $source,
             $this->equalityProbes($resolvedFilters),
-            fn(string $scan) => $evaluation->annotate('scan', $scan),
+            static function (string $strategy) use ($scan): void {
+                $scan->strategy = $strategy;
+            },
         ));
 
         if ($records->isErr()) {
             return $records;
         }
 
-        foreach ($records->unwrap() as $record) {
-            /** @var array<string, mixed> $record */
-            $csvRecord = CsvRecord::from($record);
-            $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
+        // A reader may fail lazily — a generator that only touches its file
+        // on first iteration — so the fold guards the iteration itself: an
+        // eager and a lazy failure both reach the caller as an Err. An
+        // EvaluationAborted is not the reader's: it is the dialect's own
+        // failure channel and must keep propagating to the program boundary,
+        // which restores the original error it carries.
+        try {
+            foreach ($records->unwrap() as $record) {
+                /** @var array<string, mixed> $record */
+                $csvRecord = CsvRecord::from($record);
+                $filterResult = $this->matchesAllFilters($csvRecord, $resolvedFilters);
 
-            if ($filterResult->isErr()) {
-                return $filterResult;
+                if ($filterResult->isErr()) {
+                    return $filterResult;
+                }
+
+                if ($filterResult->mapOr(false, fn(bool $v) => $v) === false) {
+                    continue;
+                }
+
+                $processed = attempt(fn() => $aggregateState->process($csvRecord, $source->aggregateColumn));
+
+                if ($processed->isErr()) {
+                    return $processed;
+                }
+
+                $aggregateState = $processed->unwrap();
+
+                if ($aggregateState->canEarlyExit()) {
+                    break;
+                }
             }
-
-            if ($filterResult->mapOr(false, fn(bool $v) => $v) === false) {
-                continue;
-            }
-
-            $processed = attempt(fn() => $aggregateState->process($csvRecord, $source->aggregateColumn));
-
-            if ($processed->isErr()) {
-                return $processed;
-            }
-
-            $aggregateState = $processed->unwrap();
-
-            if ($aggregateState->canEarlyExit()) {
-                break;
-            }
+        } catch (EvaluationAborted $aborted) {
+            throw $aborted;
+        } catch (Throwable $failure) {
+            return Err($failure);
         }
 
         $result = $aggregateState->finalize($source->columns);
+
+        // Annotated after the fold, so a reader that reports during iteration
+        // still lands in one stable place, at most once.
+        if ($scan->strategy !== null) {
+            $evaluation->annotate('scan', $scan->strategy);
+        }
 
         $evaluation->annotate('label', $source->path);
 
@@ -368,7 +398,7 @@ final class LookupExtension extends Extension
      * may use these to narrow where the file is read, never what the lookup
      * means; any column the probes skip is answered by the filter pipeline.
      *
-     * @param  list<ResolvedFilter>  $resolvedFilters
+     * @param list<ResolvedFilter> $resolvedFilters
      * @return array<string|int, string>
      */
     private function equalityProbes(array $resolvedFilters): array
