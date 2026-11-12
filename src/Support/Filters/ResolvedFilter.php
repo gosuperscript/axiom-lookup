@@ -35,17 +35,40 @@ final readonly class ResolvedFilter
 
     /**
      * The probe this filter contributes: the column an indexed reader may
-     * seek, paired with the resolved value to seek there. Null when the
-     * filter is not probe-eligible, or when the value did not resolve to
-     * the raw string the byte-equality domain requires — both halves must
-     * hold, so they are decided here, together, once.
+     * seek, paired with the values to seek there — a row is a candidate when
+     * its cell equals any of them. An equality's value is one string; a
+     * membership's is the list of strings a cell may equal, and an empty list
+     * seeks nothing, since no cell is a member of it. Null when the filter is
+     * not probe-eligible, or when the value did not resolve to the raw strings
+     * the byte-equality domain requires — both halves must hold, so they are
+     * decided here, together, once.
      *
-     * @return array{int|string, string}|null
+     * @return array{int|string, list<string>}|null
      */
     public function probe(): ?array
     {
-        return $this->probeColumn !== null && is_string($this->value)
-            ? [$this->probeColumn, $this->value]
-            : null;
+        if ($this->probeColumn === null) {
+            return null;
+        }
+
+        if (is_string($this->value)) {
+            return [$this->probeColumn, [$this->value]];
+        }
+
+        if (!is_array($this->value) || !array_is_list($this->value)) {
+            return null;
+        }
+
+        $values = [];
+
+        foreach ($this->value as $element) {
+            if (!is_string($element)) {
+                return null;
+            }
+
+            $values[$element] = $element;
+        }
+
+        return [$this->probeColumn, array_values($values)];
     }
 }
