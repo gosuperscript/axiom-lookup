@@ -64,7 +64,7 @@ final class ReadersTest extends TestCase
 
         $records = new FullCsvScanLookupSourceReader($this->filesystem)->findRecords(
             new LookupSource(path: 'users.csv', index: 'name'),
-            ['name' => 'Alice'],
+            ['name' => ['Alice']],
             function (string $scan) use (&$scans): void {
                 $scans[] = $scan;
             },

@@ -16,10 +16,11 @@ use Superscript\Axiom\Lookup\LookupSource;
  * order.
  *
  * Probes are byte-equality seeks. Narrowing by one is only a superset when
- * the dialect's `String == String` is raw byte equality (the core rule); a
- * host whose dialect overloads that comparison — case folding, trimming —
- * must not serve probes from an index built on bytes, or rows the pipeline
- * would have matched never arrive. The package cannot verify which rule a
+ * the dialect's `String == String` is raw byte equality (the core rule), and
+ * its `String in List<String>` is membership by that same equality; a host
+ * whose dialect overloads either comparison — case folding, trimming — must
+ * not serve probes from an index built on bytes, or rows the pipeline would
+ * have matched never arrive. The package cannot verify which rule a
  * dialect bound, so this precondition rests with the host that injects an
  * indexed reader.
  *
@@ -31,14 +32,16 @@ interface LookupSourceReader
 {
     /**
      * The records to fold for this lookup. `$probes` carries the values the
-     * caller's `==` filters seek, keyed by column — a reader may use them to
+     * caller's `==` and `in` filters seek, keyed by column: a record is a
+     * candidate when its cell in that column equals any of the column's
+     * values, and an empty list admits no record. A reader may use them to
      * narrow where the file is read, never what the lookup means: every
      * yielded record still passes the full filter pipeline. `$scanned`
      * reports which strategy answered (e.g. `full-stream`, or an indexed
      * reader's own label) for observability; report at most once, before
      * the records are exhausted — the last report is the one annotated.
      *
-     * @param array<int|string, string> $probes
+     * @param array<int|string, list<string>> $probes
      * @param (Closure(string): void)|null $scanned
      * @return iterable<mixed, array<int|string, mixed>>
      */

@@ -127,7 +127,7 @@ final class ExecutionObserverTest extends TestCase
 
         $this->execute($this->lookup(index: 'name'), reader: $reader);
 
-        $this->assertSame(['name' => 'Alice'], $reader->probes);
+        $this->assertSame(['name' => ['Alice']], $reader->probes);
         $this->assertSame('recorded', $this->observer->annotations['scan']);
     }
 
@@ -161,7 +161,21 @@ final class ExecutionObserverTest extends TestCase
             index: 'name',
         ), reader: $reader);
 
-        $this->assertSame(['city' => 'NYC', 'name' => 'Alice'], $reader->probes);
+        $this->assertSame(['city' => ['NYC'], 'name' => ['Alice']], $reader->probes);
+    }
+
+    #[Test]
+    public function a_membership_filter_hands_every_listed_value_to_the_injected_reader(): void
+    {
+        $reader = new RecordingReader();
+
+        $this->execute(new LookupSource(
+            path: 'users.csv',
+            filters: [new ValueFilter('name', new StaticSource(['Alice', 'Bob']), 'in')],
+            columns: ['age'],
+        ), reader: $reader);
+
+        $this->assertSame(['name' => ['Alice', 'Bob']], $reader->probes);
     }
 
     #[Test]
@@ -222,7 +236,7 @@ final class ExecutionObserverTest extends TestCase
 /** Captures the probes the extension derives; yields one matching record. */
 final class RecordingReader implements LookupSourceReader
 {
-    /** @var array<int|string, string> */
+    /** @var array<int|string, list<string>> */
     public array $probes = [];
 
     public function findRecords(LookupSource $source, array $probes, ?Closure $scanned = null): iterable

@@ -144,15 +144,16 @@ final class LookupExtension extends Extension
         $operation = $this->booleanInfix($compilation, $cellType, $filter->operator, $value->returns);
 
         // An indexed reader may seek this column only where an index's byte
-        // comparison and the dialect's `==` agree: raw string equality. The
+        // comparison and the dialect's `==` agree: raw string equality, and
+        // membership (`in`) built on that same equality. The
         // type bound is not only about matching — narrowing decides which rows
         // the pipeline reads at all, and a type that can reject a cell would
         // have its failure skipped along with the row. Eligibility reads the
         // operator token, not the rule the dialect bound (the compilation
-        // does not expose it); a dialect that overloads String == String
-        // must not serve probes — the reader interface owns that
-        // precondition.
-        $probeColumn = $filter->operator === '==' && $cellType::class === StringType::class
+        // does not expose it); a dialect that overloads String == String or
+        // String in List<String> must not serve probes — the reader interface
+        // owns that precondition.
+        $probeColumn = in_array($filter->operator, ['==', 'in'], true) && $cellType::class === StringType::class
             ? $filter->column
             : null;
 
@@ -329,7 +330,7 @@ final class LookupExtension extends Extension
         // record it yields still passes the full filter pipeline below.
         $records = attempt(fn(): iterable => $this->reader->findRecords(
             $source,
-            $this->equalityProbes($resolvedFilters),
+            $this->probes($resolvedFilters),
             static function (string $strategy) use ($scan): void {
                 $scan->strategy = $strategy;
             },
@@ -393,15 +394,15 @@ final class LookupExtension extends Extension
     /**
      * The values an indexed reader may seek on, keyed by column. Each filter
      * already carries the column it is probe-eligible on (settled at compile
-     * time); all that is left is the value this invocation produced, and only
-     * a string one — the byte-equality domain the artefact indexes. A reader
-     * may use these to narrow where the file is read, never what the lookup
+     * time); all that is left is the values this invocation produced, and only
+     * strings — the byte-equality domain the artefact indexes. A reader may
+     * use these to narrow where the file is read, never what the lookup
      * means; any column the probes skip is answered by the filter pipeline.
      *
      * @param list<ResolvedFilter> $resolvedFilters
-     * @return array<string|int, string>
+     * @return array<string|int, list<string>>
      */
-    private function equalityProbes(array $resolvedFilters): array
+    private function probes(array $resolvedFilters): array
     {
         $probes = [];
 
@@ -409,8 +410,8 @@ final class LookupExtension extends Extension
             $probe = $resolved->probe();
 
             if ($probe !== null) {
-                [$column, $value] = $probe;
-                $probes[$column] = $value;
+                [$column, $values] = $probe;
+                $probes[$column] = $values;
             }
         }
 
